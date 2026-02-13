@@ -2,10 +2,15 @@
     "cSpell.words": [
         "cumpyler",
         "declr",
+        "EBNF",
+        "identf",
         "istream",
         "lval",
         "oper",
         "opers",
         "rval"
-    ]
+    ],
+    "files.associations": {
+        "*.ml": "cpp"
+    }
 }

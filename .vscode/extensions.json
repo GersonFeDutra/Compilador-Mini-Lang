@@ -1,0 +1,16 @@
+{
+    "recommendations": [
+        "ms-python.black-formatter",
+        "magicstack.magicpython",
+        "ms-python.vscode-pylance",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "mukundan.python-docs",
+        "ms-python.vscode-python-envs",
+        "njqdev.vscode-python-typehint",
+        "cstrap.python-snippets",
+        "codeium.windsurfpyright",
+        "kevinrose.vsc-python-indent",
+        "njpwerner.autodocstring"
+    ]
+}
