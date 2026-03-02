@@ -17,7 +17,7 @@
             "name": "Python Debugger [no log]",
             "type": "debugpy",
             "request": "launch",
-            "program": "compiler.py",
+            "program": "${workspaceFolder}/src/compiler.py",
             "console": "integratedTerminal",
             "args": "./code.ml",
             "presentation": {
@@ -25,7 +25,6 @@
                 "group": "debug",
                 "order": 1
             },
-            "cwd": "${workspaceFolder}/src/"
         },
 
         {

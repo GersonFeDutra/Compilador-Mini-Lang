@@ -127,22 +127,22 @@ class Tui:
         if not text:
             return []
         return text.rstrip("\n").split("\n")
-    
+
     @staticmethod
     def process_carriage_returns(text: str) -> List[str]:
         """Process text with carriage returns by overwriting previous content."""
         if not text:
             return []
-        
+
         lines = []
         current_line = ""
-        
+
         i = 0
         while i < len(text):
-            if text[i] == '\r':
+            if text[i] == "\r":
                 # Carriage return - move to beginning of line
                 # Check if next character is newline
-                if i + 1 < len(text) and text[i + 1] == '\n':
+                if i + 1 < len(text) and text[i + 1] == "\n":
                     # \r\n sequence - treat as newline
                     lines.append(current_line)
                     current_line = ""
@@ -154,7 +154,7 @@ class Tui:
                     # and start accumulating from beginning
                     current_line = ""
                     i += 1
-            elif text[i] == '\n':
+            elif text[i] == "\n":
                 # Newline - save current line and start new one
                 lines.append(current_line)
                 current_line = ""
@@ -162,11 +162,11 @@ class Tui:
             else:
                 current_line += text[i]
                 i += 1
-        
+
         # Add any remaining content
         if current_line:
             lines.append(current_line)
-        
+
         # Remove empty strings from the list
         return [line for line in lines if line != ""]
 
@@ -193,7 +193,6 @@ class Tui:
 
         pane_index = {"source": 0, "tokens": 1, "ir": 2, "code": 3, "log": 4}[name]
 
-
         # Calculate pane height
         if self.layout.map.get(self.layout[name]) is None:
             # Estimate height based on console size and mode
@@ -214,21 +213,25 @@ class Tui:
 
         if syntax:
             # For source panel, we need to compute visible lines and their starting line number
-            visible, offset, start_index = self.compute_visible(lines_list, height, offset)
-            
+            visible, offset, start_index = self.compute_visible(
+                lines_list, height, offset
+            )
+
             # Update back the clamped offset
             with self.lock:
                 self.scroll_offsets[pane_index] = offset
-            
+
             content = "\n".join(visible)
             # Set start_line to the actual line number in the source file (1-indexed)
             start_line = start_index + 1
-            syn = Syntax(content, "c", theme=self.theme, line_numbers=True, start_line=start_line)
+            syn = Syntax(
+                content, "c", theme=self.theme, line_numbers=True, start_line=start_line
+            )
             style = "bold cyan" if self.selected_pane == 0 else "cyan"
             return Panel(syn, title="Source", border_style=style)
         else:
             visible, offset, _ = self.compute_visible(lines_list, height, offset)
-            
+
             # Update back the clamped offset
             with self.lock:
                 self.scroll_offsets[pane_index] = offset
@@ -267,36 +270,28 @@ class Tui:
                 "source", self.lines_of(self.source_buf.getvalue()), syntax=True
             )
         )
-        
+
         # Process tokens with carriage returns
         tokens_text = self.tokens_buf.getvalue()
         tokens_lines = self.process_carriage_returns(tokens_text)
-        self.layout["tokens"].update(
-            self.render_box("tokens", tokens_lines)
-        )
+        self.layout["tokens"].update(self.render_box("tokens", tokens_lines))
 
         if self.mode >= Tui.Mode.PARSER:
             # Process IR with carriage returns
             ir_text = self.ir_buf.getvalue()
             ir_lines = self.process_carriage_returns(ir_text)
-            self.layout["ir"].update(
-                self.render_box("ir", ir_lines)
-            )
-            
+            self.layout["ir"].update(self.render_box("ir", ir_lines))
+
             # Process log with carriage returns
             log_text = self.log_buf.getvalue()
             log_lines = self.process_carriage_returns(log_text)
-            self.layout["log"].update(
-                self.render_box("log", log_lines)
-            )
+            self.layout["log"].update(self.render_box("log", log_lines))
 
         if self.mode >= Tui.Mode.CODE_GEN:
             # Process code with carriage returns
             code_text = self.code_buf.getvalue()
             code_lines = self.process_carriage_returns(code_text)
-            self.layout["code"].update(
-                self.render_box("code", code_lines)
-            )
+            self.layout["code"].update(self.render_box("code", code_lines))
 
         return self.layout
 
@@ -481,7 +476,18 @@ class Tui:
             self.render(), console=self.console, refresh_per_second=20, screen=True
         ) as live:
             self._live = live
-            task()
+            try:
+                task()
+            except Exception as e:
+                # region Flush all buffers to show error context
+                self.log_source("", end="\n", flush=True)
+                self.log_tokens("", end="\n", flush=True)
+                self.log_ir("", end="\n", flush=True)
+                self.log_code("", end="\n", flush=True)
+                # endregion
+                self.log_debug(f"\n[red]{e}[/red]")
+                self.log_debug("[blue]Press 'q' to quit.[/blue]")
+                hold = True  # keep UI open to show error
 
             self.running = hold
             # Holds the process after task run.
@@ -521,9 +527,9 @@ if __name__ == "__main__":
             "        return 1;",
             "    }",
             "    return 0;",
-            "}"
+            "}",
         ]
-        
+
         tokens = [
             "<TYPE, int> <ID, main> <'('> <')'> <'{'>",
             "<TYPE, int> <ID, x> <'='> <NUM, 5> <';'>",
@@ -531,11 +537,10 @@ if __name__ == "__main__":
             "<TYPE, float> <ID, z> <'='> <NUM, 3> <'.'> <NUM, 14> <';'>",
             "<'if'> <'('> <ID, y> <'>'> <NUM, 10> <')'> <'{'>",
             "<'return'> <NUM, 1> <';'>",
-            "<'}'>,"
-            "<'return'> <NUM, 0> <';'>",
+            "<'}'>," "<'return'> <NUM, 0> <';'>",
             "<'}'>",
         ]
-        
+
         ir_code = [
             "function main:",
             "  entry:",
@@ -553,9 +558,9 @@ if __name__ == "__main__":
             "  if_true:",
             "    ret i32 1",
             "  if_end:",
-            "    ret i32 0"
+            "    ret i32 0",
         ]
-        
+
         asm_code = [
             "main:",
             "    push rbp",
@@ -575,44 +580,52 @@ if __name__ == "__main__":
             "    mov eax, 0",
             ".L3:",
             "    leave",
-            "    ret"
+            "    ret",
         ]
-        
+
         # Log source code
         for i, line in enumerate(source_code):
             ui.log_source(line)
             ui.log_debug(f"Processing line {i+1}...")
             time.sleep(0.1)
-        
+
         # Log tokens with carriage returns (simulating lexer)
         ui.log_debug("\nStarting tokenization...")
         for i, token_line in enumerate(tokens):
             if i % 2 == 0:
-                ui.log_tokens(f"\rTokenizing... {i+1}/{len(tokens)}", end="", flush=True)
+                ui.log_tokens(
+                    f"\rTokenizing... {i+1}/{len(tokens)}", end="", flush=True
+                )
             else:
                 ui.log_tokens(f"\rTokenized: {token_line}")
             time.sleep(0.05)
-        
+
         # Log IR code
         ui.log_debug("\nGenerating intermediate representation...")
         for i, ir_line in enumerate(ir_code):
             ui.log_ir(ir_line)
             if i % 3 == 0:
-                ui.log_debug(f"\rIR generation: {i+1}/{len(ir_code)} lines", end="", flush=True)
+                ui.log_debug(
+                    f"\rIR generation: {i+1}/{len(ir_code)} lines", end="", flush=True
+                )
             time.sleep(0.03)
         ui.log_debug("\rIR generation complete!")
-        
+
         # Log assembly code
         ui.log_debug("\nGenerating assembly code...")
         for i, asm_line in enumerate(asm_code):
             ui.log_code(asm_line)
             if i % 4 == 0:
-                ui.log_debug(f"\rCode generation: {i+1}/{len(asm_code)} lines", end="", flush=True)
+                ui.log_debug(
+                    f"\rCode generation: {i+1}/{len(asm_code)} lines",
+                    end="",
+                    flush=True,
+                )
             time.sleep(0.02)
         ui.log_debug("\rCode generation complete!")
-        
+
         # Final status
-        ui.log_debug("\n" + "="*50)
+        ui.log_debug("\n" + "=" * 50)
         ui.log_debug("Compilation successful!")
         ui.log_debug("Use keys 1-5 to select panes, j/k to scroll, q to quit")
         ui.log_debug("Try 'g' to go to top, 'G' to go to bottom of selected pane")

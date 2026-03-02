@@ -13,10 +13,26 @@ from utils.utils import log_warning
 from queue import SimpleQueue as Queue
 
 from modules.ast import (
-    Program, Block, Literal, BinOp, Assignment, VarDecl, Identifier, ASTNode,
-    VarDecl, PrintStmt, IfStmt, WhileStmt, ReturnStmt, FormalParam, FunctionCall, FunctionDecl)
+    Program,
+    Block,
+    Literal,
+    BinOp,
+    Assignment,
+    VarDecl,
+    Identifier,
+    ASTNode,
+    VarDecl,
+    PrintStmt,
+    IfStmt,
+    WhileStmt,
+    ReturnStmt,
+    FormalParam,
+    FunctionCall,
+    FunctionDecl,
+)
 from typing import List
 from pprint import pformat
+
 
 # Definimos uma exceção personalizada para evitar confusão
 # com o "SyntaxError" nativo do Python
@@ -54,15 +70,17 @@ class Parser:
 
         # Verifica se o último caractere é o marcador vazio (nil ⇒ EOF)
         if self._lookahead != "":
-            raise ParseError("Erro: Código extra encontrado após o fim do escopo principal.")
-        
-        #imprimir arvore
-        self._log("\n" + "="*40)
+            raise ParseError(
+                "Erro: Código extra encontrado após o fim do escopo principal."
+            )
+
+        # imprimir arvore
+        self._log("\n" + "=" * 40)
         self._log("AST GERADA COM SUCESSO:")
-        self._log("="*40)
-        self._log(pformat(ast_root,indent=2,width=80))
+        self._log("=" * 40)
+        self._log(pformat(ast_root, indent=2, width=80))
         self._log("\n")
-        
+
         return ast_root
 
     def program(self):
@@ -76,61 +94,63 @@ class Parser:
     def var_decl(self) -> VarDecl:
         """Regra: var <id> : <type> = <expr> ;"""
         self.match(Tags.VAR)
-        
+
         name = str(self._lookahead)
         self.match(Tags.ID)
         self.match(Tag(":"))
-        
+
         var_type = str(self._lookahead)
         self.match(Tags.TYPE)
         self.match(Tag("="))
-        
+
         expr_node = self.opers()
         self.match(Tag(";"))
 
-        #Salvar tabelas de simbolos
+        # Salvar tabelas de simbolos
         if not self._sym_table.insert(name, Symbol(name, var_type)):
             raise ParseError(f"Erro: variável '{name}' já declarada.")
         return VarDecl(name=name, var_type=var_type, value=expr_node)
-    
+
     def assignment(self) -> Assignment:
-        """Regra: set <id> = <expr> ;"""      
+        """Regra: set <id> = <expr> ;"""
         self.match(Tags.SET)
-        
+
         name = str(self._lookahead)
         self.match(Tags.ID)
         self.match(Tag("="))
-        
+
         expr_node = self.opers()
         self.match(Tag(";"))
-        
+
         return Assignment(name=name, value=expr_node)
-    
+
     def print_stmt(self) -> PrintStmt:
         """Regra: print <expr> ;"""
-        
+
         self.match(Tags.PRINT)
         expr_node = self.opers()
         self.match(Tag(";"))
-        
+
         return PrintStmt(expr=expr_node)
-    
+
     def if_stmt(self) -> IfStmt:
         """REGRA: if( <expression> ) <bloco> [ else <block> ]"""
         self.match(Tags.IF)
         self.match(Tag("("))
         condition = self.opers()
         self.match(Tag(")"))
-        
+
         true_block = self.block()
         false_block = None
-        
+
         if self._lookahead.tag == Tags.ELSE:
             self.match(Tags.ELSE)
             false_block = self.block()
-        return IfStmt(condition=condition, true_block=true_block, false_block=false_block)
-    
-    def while_stmt(self)-> WhileStmt:
+        return IfStmt(
+            condition=condition, true_block=true_block, false_block=false_block
+        )
+
+    def while_stmt(self) -> WhileStmt:
         """Regra: while ( <expression> ) <block>"""
         self.match(Tags.WHILE)
         self.match(Tag("("))
@@ -138,23 +158,23 @@ class Parser:
         self.match(Tag(")"))
         body = self.block()
         return WhileStmt(condition=condition, body=body)
-    
+
     def return_stmt(self) -> ReturnStmt:
-        """Regra: return <expression> ;""" 
+        """Regra: return <expression> ;"""
         self.match(Tags.RETURN)
         expr_node = self.opers()
         self.match(Tag(";"))
         return ReturnStmt(expr=expr_node)
-    
+
     def function_decl(self) -> FunctionDecl:
         """Regra def <id> ( [ <params>] ) : <type> <block>"""
         self.match(Tags.DEF)
         name = str(self._lookahead)
         self.match(Tags.ID)
         self.match(Tag("("))
-        
+
         params = []
-        
+
         if self._lookahead.tag == Tags.ID:
             while True:
                 p_name = str(self._lookahead)
@@ -163,21 +183,20 @@ class Parser:
                 p_type = str(self._lookahead)
                 self.match(Tags.TYPE)
                 params.append(FormalParam(name=p_name, param_type=p_type))
-                
+
                 if self._lookahead == ",":
                     self.match(Tag(","))
                 else:
                     break
-        
+
         self.match(Tag(")"))
         self.match(Tag(":"))
         ret_type = str(self._lookahead)
         self.match(Tags.TYPE)
         body = self.block()
-        
+
         return FunctionDecl(name=name, params=params, return_type=ret_type, body=body)
-        
-        
+
     def stmts(self) -> List[ASTNode]:
         """Statements
         Regras:
@@ -185,45 +204,45 @@ class Parser:
             stmt -> block | expr;
         """
         statements_list = []
-        
+
         while True:
             # stmt -> block
             if self._lookahead == ";":
                 self.match(Tag(";"))
                 continue
-            
+
             if self._lookahead.tag == "{":
                 statements_list.append(self.block())
                 continue
-            
+
             if self._lookahead.tag == Tags.VAR:
                 statements_list.append(self.var_decl())
                 continue
-            
+
             if self._lookahead.tag == Tags.SET:
                 statements_list.append(self.assignment())
                 continue
-            
+
             if self._lookahead.tag == Tags.PRINT:
                 statements_list.append(self.print_stmt())
                 continue
-            
+
             if self._lookahead.tag == Tags.IF:
                 statements_list.append(self.if_stmt())
                 continue
-            
+
             if self._lookahead.tag == Tags.WHILE:
                 statements_list.append(self.while_stmt())
                 continue
-            
+
             if self._lookahead.tag == Tags.DEF:
                 statements_list.append(self.function_decl())
                 continue
-            
+
             if self._lookahead.tag == Tags.RETURN:
                 statements_list.append(self.return_stmt())
                 continue
-            
+
             # Produção vazia
             return statements_list
 
@@ -240,7 +259,7 @@ class Parser:
                     )
                 return []
             return nodes
-        
+
         nodes = self.rval_lst()
         # stmt -> rval_lst
         if nodes is not None:
@@ -280,10 +299,10 @@ class Parser:
                 "era esperado '}' no final do bloco."
             )
         self.match(Tag("}"))
-       
+
         # ação semântica: restaura tabela anterior
         self._sym_table = saved_table
-       # del saved_table
+        # del saved_table
         return Block(statements=comando_dos_blocos)
 
     def lval_lst(self) -> bool:
@@ -344,7 +363,7 @@ class Parser:
             # self.match(TAG('='))
 
             t = self._lookahead
-            
+
             if self._lookahead.tag != Tags.TYPE:
                 raise ParseError(
                     f"Erro na linha {self._lexer.line}:"
@@ -352,11 +371,11 @@ class Parser:
                 )
             self.match(Tags.TYPE)
             assert isinstance(t, Type)
-            
+
             declarations = []
             while not self.queue_empty():
                 id_token = self.deque()
-                #assert id is not None
+                # assert id is not None
                 name = str(id_token)
                 # ação semântica: declara a variável na tabela de símbolos
                 if not self._sym_table.insert(name, Symbol(name, str(t))):
@@ -365,25 +384,27 @@ class Parser:
                         f" a variável '{name}' já foi declarada no escopo atual."
                     )
                 # cria o nó de declaraçao na ast
-                declarations.append(VarDecl(name=name, var_type=str(t), value=Literal(None)))
+                declarations.append(
+                    VarDecl(name=name, var_type=str(t), value=Literal(None))
+                )
             return declarations
-        
+
         elif self._lookahead == "=":
             # declr_or_rval_lst -> = rval_lst
             self.match(Tag("="))
             valores = self.rval_lst() or []
-            
+
             assignments = []
-        
+
             while not self.queue_empty():
                 id_token = self.deque()
                 name = str(id_token)
-                
+
                 val_node = valores.pop(0) if valores else Literal(None)
                 assignments.append(Assignment(name=name, value=val_node))
             return assignments
         return None
-    
+
     def rval_lst(self) -> List[ASTNode] | None:
         """R-value list
         Regras:
@@ -408,7 +429,6 @@ class Parser:
             else:
                 break
         return exprs
-        
 
     def queue_empty(self) -> bool:
         """Checks if the id_queue is empty."""
@@ -459,44 +479,55 @@ class Parser:
             operator -> + | - | * | / | > | < | ==
         """
         left_node = self.factor()
-      
+
         while True:
-            
-            if self._lookahead in ("+", "-", "*", "/", ">", "<", "==", "!=", "<=", ">="):
+
+            if self._lookahead in (
+                "+",
+                "-",
+                "*",
+                "/",
+                ">",
+                "<",
+                "==",
+                "!=",
+                "<=",
+                ">=",
+            ):
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
                 right_node = self.factor()
-                left_node = BinOp(left=left_node, op=op_str,right=right_node)
-                
+                left_node = BinOp(left=left_node, op=op_str, right=right_node)
+
             # Produção vazia (return)
             else:
                 return left_node
-    
+
     def factor(self) -> ASTNode:
-        
+
         modifier = 1
         if self._lookahead == "+":
             self.match(Tag("+"))
         elif self._lookahead == "-":
             self.match(Tag("-"))
             modifier = -1
-        
+
         if self._lookahead.tag == Tags.NUM:
             val = self._lookahead.value * modifier
             self.match(Tags.NUM)
             return Literal(value=val)
-            
+
         # É uma String (texto entre aspas)?
         elif self._lookahead.tag == Tags.STR_LIT:
             val = self._lookahead.value
             self.match(Tags.STR_LIT)
             return Literal(value=val)
-            
+
         # É uma Variável sendo usada na conta (Identificador)?
         elif self._lookahead.tag == Tags.ID:
             name = str(self._lookahead)
             self.match(Tags.ID)
-            
+
             if self._lookahead == "(":
                 self.match(Tag("("))
                 args = []
@@ -509,33 +540,36 @@ class Parser:
                             break
                 self.match(Tag(")"))
                 return FunctionCall(name=name, args=args)
-            
+
             return Identifier(name=name)
-        
+
         else:
-            raise ParseError(f"Erro na linha {self._lexer.line}: Esperado um valor, variável ou string.")
-        
-    #def digit(self) -> Literal:
+            raise ParseError(
+                f"Erro na linha {self._lexer.line}: Esperado um valor, variável ou string."
+            )
+
+        # def digit(self) -> Literal:
         """
         Regra: digit -> digit { print(digit) }
         """
-     #   modifier = 1
-     #   if self._lookahead == "+":
-     #       self.match(Tag("+"))
-     #   elif self._lookahead == "-":
-     #       self.match(Tag("-"))
-     #       modifier = -1
-            
-     #   if self._lookahead.tag == Tags.NUM:
-     #       assert isinstance(self._lookahead, Num)
-     #       num_value = self._lookahead.value * modifier
-     #       # self._lexer._log(f"{self._lookahead}", end=" ", flush=True)
-     #       self.match(self._lookahead.tag)
-     #       return Literal(value=num_value)
-     #   else:
-     #       log_error(
-     #           f"\nErro na linha {self._lexer.line}:"
-     #           f"\033[35m dígito era esperado, obteve {self._lookahead} ao invés disso."
+
+    #   modifier = 1
+    #   if self._lookahead == "+":
+    #       self.match(Tag("+"))
+    #   elif self._lookahead == "-":
+    #       self.match(Tag("-"))
+    #       modifier = -1
+
+    #   if self._lookahead.tag == Tags.NUM:
+    #       assert isinstance(self._lookahead, Num)
+    #       num_value = self._lookahead.value * modifier
+    #       # self._lexer._log(f"{self._lookahead}", end=" ", flush=True)
+    #       self.match(self._lookahead.tag)
+    #       return Literal(value=num_value)
+    #   else:
+    #       log_error(
+    #           f"\nErro na linha {self._lexer.line}:"
+    #           f"\033[35m dígito era esperado, obteve {self._lookahead} ao invés disso."
     #        )
     #        raise ParseError()
 
@@ -577,6 +611,7 @@ def main(source_filename: str, options: int, *args, **kwargs):
             istream = InputStream(source_filename)
         except FileNotFoundError:
             log_error(f"Error: The file '{source_filename}' was not found.")
+            return
         lexer = Lexer(
             istream,  # pyright: ignore[reportPossiblyUnboundVariable]
             lambda *args, **kwargs: None,

@@ -65,7 +65,7 @@ class Tags:
     # FLOAT = Tag(264, 'FLOAT')
     # PTR = Tag(265, 'PTR')
 
-    
+
 class Token:
     def __init__(self, tag: Tag | str | int):
         if isinstance(tag, int):
@@ -102,6 +102,7 @@ class Token:
     def __str__(self) -> str:
         return str(self.tag)
 
+
 class Id(Token):
     name: str
 
@@ -127,12 +128,15 @@ class Num(Token):
         super().__init__(Tags.NUM)
         self.value = value
 
+
 class Str(Token):
-    def __init__(self,value: str):
+    def __init__(self, value: str):
         super().__init__(Tags.STR_LIT)
         self.value = value
-    def __str__(self)-> str:
+
+    def __str__(self) -> str:
         return f'{self.value}"'
+
 
 class Lexer:
     _id_table: dict[str, "Token | Id | Type"] = {}
@@ -300,19 +304,19 @@ class Lexer:
             # region 2.5 Trata Strings
             if self._peek == '"':
                 str_val = ""
-                self._peek = self._get_next_char() #aspa inicial
+                self._peek = self._get_next_char()  # aspa inicial
 
                 while self._peek != '"' and self._peek != "":
                     str_val += self._peek
                     self._peek = self._get_next_char()
                 if self._peek == '"':
-                    self._peek = self._get_next_char() #aspa final
-                    
+                    self._peek = self._get_next_char()  # aspa final
+
                 self._log(f'<STR_LIT, "{str_val}">', end="")
                 self._logged_token = True
                 return Str(str_val)
-              #endregion      
-                    
+            # endregion
+
             # TODO -> Tratar identificadores genéricos de forma diferente de palavras-reservadas
             # region 3. Trata identificadores e palavras reservadas
             if self._peek.isalpha():
