@@ -12,6 +12,11 @@ from modules.symbols import Symbol, SymTable
 from utils.utils import log_warning
 from queue import SimpleQueue as Queue
 
+from modules.ast import (
+    Program, Block, Literal, BinOp, Assignment, VarDecl, Identifier, ASTNode,
+    VarDecl, PrintStmt, IfStmt, WhileStmt, ReturnStmt, FormalParam, FunctionCall, FunctionDecl)
+from typing import List
+from pprint import pformat
 
 # Definimos uma exceção personalizada para evitar confusão
 # com o "SyntaxError" nativo do Python
@@ -41,68 +46,212 @@ class Parser:
         if self._optimize:
             self.accumulator: int = 0
 
-    def start(self):
-        """Inicia o processo de análise lendo o primeiro token."""
+    def start(self) -> Program:
+        """Inicia o processo de análise e retorna a AST completa."""
         self._lookahead = self._lexer.scan()
-        self.program()
+        ast_root = self.program()
         self._lexer.finish()
 
         # Verifica se o último caractere é o marcador vazio (nil ⇒ EOF)
         if self._lookahead != "":
-            raise ParseError()
+            raise ParseError("Erro: Código extra encontrado após o fim do escopo principal.")
+        
+        #imprimir arvore
+        self._log("\n" + "="*40)
+        self._log("AST GERADA COM SUCESSO:")
+        self._log("="*40)
+        self._log(pformat(ast_root,indent=2,width=80))
+        self._log("\n")
+        
+        return ast_root
 
     def program(self):
         """
         Regra:
             program -> { symTable=null; } stmts
         """
-        # SymTable inicia vazia no __init__
-        self.stmts()
+        lista_de_comandos = self.stmts()
+        return Program(statements=lista_de_comandos)
 
-    def stmts(self):
+    def var_decl(self) -> VarDecl:
+        """Regra: var <id> : <type> = <expr> ;"""
+        self.match(Tags.VAR)
+        
+        name = str(self._lookahead)
+        self.match(Tags.ID)
+        self.match(Tag(":"))
+        
+        var_type = str(self._lookahead)
+        self.match(Tags.TYPE)
+        self.match(Tag("="))
+        
+        expr_node = self.opers()
+        self.match(Tag(";"))
+
+        #Salvar tabelas de simbolos
+        if not self._sym_table.insert(name, Symbol(name, var_type)):
+            raise ParseError(f"Erro: variável '{name}' já declarada.")
+        return VarDecl(name=name, var_type=var_type, value=expr_node)
+    
+    def assignment(self) -> Assignment:
+        """Regra: set <id> = <expr> ;"""      
+        self.match(Tags.SET)
+        
+        name = str(self._lookahead)
+        self.match(Tags.ID)
+        self.match(Tag("="))
+        
+        expr_node = self.opers()
+        self.match(Tag(";"))
+        
+        return Assignment(name=name, value=expr_node)
+    
+    def print_stmt(self) -> PrintStmt:
+        """Regra: print <expr> ;"""
+        
+        self.match(Tags.PRINT)
+        expr_node = self.opers()
+        self.match(Tag(";"))
+        
+        return PrintStmt(expr=expr_node)
+    
+    def if_stmt(self) -> IfStmt:
+        """REGRA: if( <expression> ) <bloco> [ else <block> ]"""
+        self.match(Tags.IF)
+        self.match(Tag("("))
+        condition = self.opers()
+        self.match(Tag(")"))
+        
+        true_block = self.block()
+        false_block = None
+        
+        if self._lookahead.tag == Tags.ELSE:
+            self.match(Tags.ELSE)
+            false_block = self.block()
+        return IfStmt(condition=condition, true_block=true_block, false_block=false_block)
+    
+    def while_stmt(self)-> WhileStmt:
+        """Regra: while ( <expression> ) <block>"""
+        self.match(Tags.WHILE)
+        self.match(Tag("("))
+        condition = self.opers()
+        self.match(Tag(")"))
+        body = self.block()
+        return WhileStmt(condition=condition, body=body)
+    
+    def return_stmt(self) -> ReturnStmt:
+        """Regra: return <expression> ;""" 
+        self.match(Tags.RETURN)
+        expr_node = self.opers()
+        self.match(Tag(";"))
+        return ReturnStmt(expr=expr_node)
+    
+    def function_decl(self) -> FunctionDecl:
+        """Regra def <id> ( [ <params>] ) : <type> <block>"""
+        self.match(Tags.DEF)
+        name = str(self._lookahead)
+        self.match(Tags.ID)
+        self.match(Tag("("))
+        
+        params = []
+        
+        if self._lookahead.tag == Tags.ID:
+            while True:
+                p_name = str(self._lookahead)
+                self.match(Tags.ID)
+                self.match(Tag(":"))
+                p_type = str(self._lookahead)
+                self.match(Tags.TYPE)
+                params.append(FormalParam(name=p_name, param_type=p_type))
+                
+                if self._lookahead == ",":
+                    self.match(Tag(","))
+                else:
+                    break
+        
+        self.match(Tag(")"))
+        self.match(Tag(":"))
+        ret_type = str(self._lookahead)
+        self.match(Tags.TYPE)
+        body = self.block()
+        
+        return FunctionDecl(name=name, params=params, return_type=ret_type, body=body)
+        
+        
+    def stmts(self) -> List[ASTNode]:
         """Statements
         Regras:
             stmts -> stmt stmts | ϵ
             stmt -> block | expr;
         """
+        statements_list = []
+        
         while True:
             # stmt -> block
+            if self._lookahead == ";":
+                self.match(Tag(";"))
+                continue
+            
             if self._lookahead.tag == "{":
-                self.block()
+                statements_list.append(self.block())
                 continue
-            if self.expr():
-                if self._lookahead == ";":
-                    self.match(Tag(";"))
-                else:
-                    raise ParseError(
-                        f"Erro na linha {self._lexer.line}:"
-                        " fim de linha ou ';' esperado."
-                    )
+            
+            if self._lookahead.tag == Tags.VAR:
+                statements_list.append(self.var_decl())
                 continue
+            
+            if self._lookahead.tag == Tags.SET:
+                statements_list.append(self.assignment())
+                continue
+            
+            if self._lookahead.tag == Tags.PRINT:
+                statements_list.append(self.print_stmt())
+                continue
+            
+            if self._lookahead.tag == Tags.IF:
+                statements_list.append(self.if_stmt())
+                continue
+            
+            if self._lookahead.tag == Tags.WHILE:
+                statements_list.append(self.while_stmt())
+                continue
+            
+            if self._lookahead.tag == Tags.DEF:
+                statements_list.append(self.function_decl())
+                continue
+            
+            if self._lookahead.tag == Tags.RETURN:
+                statements_list.append(self.return_stmt())
+                continue
+            
             # Produção vazia
-            return
+            return statements_list
 
-    def expr(self) -> bool:
+    def expr(self) -> List[ASTNode] | None:
         """lval_lst declr_or_rval_lst | rval_lst"""
         # stmt -> lval_lst rval_lst
         if self.lval_lst():
-            if not self.declr_or_rval_lst():
+            nodes = self.declr_or_rval_lst()
+            if nodes is None:
                 self.clear_queue()
                 if self._lookahead == ";":
                     self._warn(
                         f"[warning] standalone expression at line :{self._lexer.line}."
                     )
-            return True
+                return []
+            return nodes
+        
+        nodes = self.rval_lst()
         # stmt -> rval_lst
-        if self.rval_lst():
+        if nodes is not None:
             if self._lookahead == ";":
                 self._warn(
                     f"[warning] standalone expression at line :{self._lexer.line}."
                 )
-            return True
-        return False
+            return nodes
+        return None
 
-    def block(self):
+    def block(self) -> Block:
         """
         Regra:
             block -> { saved= symTable;
@@ -117,15 +266,13 @@ class Parser:
         #     raise ParseError(f"Erro na linha {self._lexer.line}:"
         #                      "era esperado '{' no início do bloco.")
 
-        self._log("{")  # ação semântica: imprime '{'
-
         # 1. Salva tabela atual
         saved_table = self._sym_table  # ação semântica
 
         # 2. cria nova tabela aninhada
         self._sym_table = SymTable(previous=saved_table)
 
-        self.stmts()
+        comando_dos_blocos = self.stmts()
 
         if self._lookahead != "}":
             raise ParseError(
@@ -133,11 +280,11 @@ class Parser:
                 "era esperado '}' no final do bloco."
             )
         self.match(Tag("}"))
-        self._log("\n}", end="")  # ação semântica: imprime '}'
-
+       
         # ação semântica: restaura tabela anterior
         self._sym_table = saved_table
-        del saved_table
+       # del saved_table
+        return Block(statements=comando_dos_blocos)
 
     def lval_lst(self) -> bool:
         """Left-value list
@@ -178,7 +325,7 @@ class Parser:
         # Not a left-value
         return ret
 
-    def declr_or_rval_lst(self) -> bool:
+    def declr_or_rval_lst(self) -> List[ASTNode] | None:
         """Expressions
         Regras:
             declr_or_rval_lst -> :
@@ -197,6 +344,7 @@ class Parser:
             # self.match(TAG('='))
 
             t = self._lookahead
+            
             if self._lookahead.tag != Tags.TYPE:
                 raise ParseError(
                     f"Erro na linha {self._lexer.line}:"
@@ -204,53 +352,63 @@ class Parser:
                 )
             self.match(Tags.TYPE)
             assert isinstance(t, Type)
-            while not self._id_queue.empty():
-                id = self.deque()
-                assert id is not None
-                name = str(id)
+            
+            declarations = []
+            while not self.queue_empty():
+                id_token = self.deque()
+                #assert id is not None
+                name = str(id_token)
                 # ação semântica: declara a variável na tabela de símbolos
                 if not self._sym_table.insert(name, Symbol(name, str(t))):
                     raise ParseError(
                         f"Erro na linha {self._lexer.line}:"
                         f" a variável '{name}' já foi declarada no escopo atual."
                     )
-                # ação semântica: imprime a declaração
-                self._log(f"{name} : {t}", flush=True)
-
-            return True
+                # cria o nó de declaraçao na ast
+                declarations.append(VarDecl(name=name, var_type=str(t), value=Literal(None)))
+            return declarations
+        
         elif self._lookahead == "=":
             # declr_or_rval_lst -> = rval_lst
             self.match(Tag("="))
-            self.rval_lst()
-            return True
-        # Produção vazia
-        return False
-
-    def rval_lst(self) -> bool:
+            valores = self.rval_lst() or []
+            
+            assignments = []
+        
+            while not self.queue_empty():
+                id_token = self.deque()
+                name = str(id_token)
+                
+                val_node = valores.pop(0) if valores else Literal(None)
+                assignments.append(Assignment(name=name, value=val_node))
+            return assignments
+        return None
+    
+    def rval_lst(self) -> List[ASTNode] | None:
         """R-value list
         Regras:
             rval_lst -> rval [, rval_lst]'
             rval -> expr { id=deque()); print(id+'=') }
         """
+        exprs = []
         if self.queue_empty():
             # Standalone expression
             while self._lookahead.tag == Tags.NUM or self._lookahead in ("+", "-"):
-                self.opers()
+                exprs.append(self.opers())
                 if self._lookahead == ",":
                     self.match(Tag(","))
                 else:
-                    return True
-            return False
+                    return exprs
+            return None if not exprs else exprs
 
         while True:
-            id = self.deque()
-            if id is None:
-                return True
-
-            # rval -> expr
-            self._log(f"{id}=", end="", flush=True)  # ação semântica
-            self.opers()
-            self._log("")
+            exprs.append(self.opers())
+            if self._lookahead == ",":
+                self.match(Tag(","))
+            else:
+                break
+        return exprs
+        
 
     def queue_empty(self) -> bool:
         """Checks if the id_queue is empty."""
@@ -298,71 +456,88 @@ class Parser:
         Regras:
             opers -> digit oper'
             oper -> operator digit oper*
-            operator -> + | - | * | /
+            operator -> + | - | * | / | > | < | ==
         """
-        self.accumulator = self.digit()
-
-        # operator digit
-        if self._optimize:
-            while True:
-                # Regra: oper -> + digit { print(+) } oper
-                if self._lookahead == "+":
-                    self.match(Tag("+"))
-                    self.accumulator += self.digit()
-                # Regra: oper -> - digit { print(-) } oper
-                elif self._lookahead == "-":
-                    self.match(Tag("-"))
-                    self.accumulator -= self.digit()
-                # Produção vazia (return)
-                else:
-                    self._log(self.accumulator, end="", flush=True)
-                    return
-        else:
-            while True:
-                self._log(f"{self.accumulator}", end="", flush=True)
-
-                # Regra: oper -> + digit { print(+) } oper
-                if self._lookahead == "+":
-                    self.match(Tag("+"))
-                    self._log("+", end="", flush=True)
-                    self.accumulator = self.digit()
-
-                # Regra: oper -> - digit { print(-) } oper
-                elif self._lookahead == "-":
-                    self.match(Tag("-"))
-                    self._log("-", end="", flush=True)
-                    self.accumulator = self.digit()
-
-                # Produção vazia (return)
-                else:
-                    return
-
-    def Fact(self):
-        # fact -> id
-        ...
-
-    def digit(self) -> int:
-        """
-        Regra: digit -> digit { print(digit) }
-        """
+        left_node = self.factor()
+      
+        while True:
+            
+            if self._lookahead in ("+", "-", "*", "/", ">", "<", "==", "!=", "<=", ">="):
+                op_str = str(self._lookahead)
+                self.match(Tag(op_str))
+                right_node = self.factor()
+                left_node = BinOp(left=left_node, op=op_str,right=right_node)
+                
+            # Produção vazia (return)
+            else:
+                return left_node
+    
+    def factor(self) -> ASTNode:
+        
         modifier = 1
         if self._lookahead == "+":
             self.match(Tag("+"))
         elif self._lookahead == "-":
             self.match(Tag("-"))
             modifier = -1
+        
         if self._lookahead.tag == Tags.NUM:
-            assert isinstance(self._lookahead, Num)
-            num: Num = self._lookahead
-            # self._lexer._log(f"{self._lookahead}", end=" ", flush=True)
-            self.match(self._lookahead.tag)
-            return num.value * modifier
+            val = self._lookahead.value * modifier
+            self.match(Tags.NUM)
+            return Literal(value=val)
+            
+        # É uma String (texto entre aspas)?
+        elif self._lookahead.tag == Tags.STR_LIT:
+            val = self._lookahead.value
+            self.match(Tags.STR_LIT)
+            return Literal(value=val)
+            
+        # É uma Variável sendo usada na conta (Identificador)?
+        elif self._lookahead.tag == Tags.ID:
+            name = str(self._lookahead)
+            self.match(Tags.ID)
+            
+            if self._lookahead == "(":
+                self.match(Tag("("))
+                args = []
+                if self._lookahead != ")":
+                    while True:
+                        args.append(self.opers())
+                        if self._lookahead == ",":
+                            self.match(Tag(","))
+                        else:
+                            break
+                self.match(Tag(")"))
+                return FunctionCall(name=name, args=args)
+            
+            return Identifier(name=name)
+        
         else:
-            log_error(
-                f"\nErro na linha {self._lexer.line}:"
-                f"\033[35m dígito era esperado, obteve {self._lookahead} ao invés disso."
-            )
-            raise ParseError()
+            raise ParseError(f"Erro na linha {self._lexer.line}: Esperado um valor, variável ou string.")
+        
+    #def digit(self) -> Literal:
+        """
+        Regra: digit -> digit { print(digit) }
+        """
+     #   modifier = 1
+     #   if self._lookahead == "+":
+     #       self.match(Tag("+"))
+     #   elif self._lookahead == "-":
+     #       self.match(Tag("-"))
+     #       modifier = -1
+            
+     #   if self._lookahead.tag == Tags.NUM:
+     #       assert isinstance(self._lookahead, Num)
+     #       num_value = self._lookahead.value * modifier
+     #       # self._lexer._log(f"{self._lookahead}", end=" ", flush=True)
+     #       self.match(self._lookahead.tag)
+     #       return Literal(value=num_value)
+     #   else:
+     #       log_error(
+     #           f"\nErro na linha {self._lexer.line}:"
+     #           f"\033[35m dígito era esperado, obteve {self._lookahead} ao invés disso."
+    #        )
+    #        raise ParseError()
 
     def match(self, t: Tag):
         """Verifica se o caractere atual corresponde ao esperado e avança."""
