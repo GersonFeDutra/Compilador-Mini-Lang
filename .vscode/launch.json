@@ -45,6 +45,63 @@
         },
 
         {
+            "name": "Python Debugger [gen output]",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/compiler.py",
+            "console": "integratedTerminal",
+            "args": [
+                "./code.ml",
+                "--log",
+                "./output.py"
+            ],
+            "presentation": {
+                "hidden": false,
+                "group": "debug",
+                "order": 1
+            },
+        },
+
+        {
+            "name": "Python Debugger [hybrid interpreter]",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/compiler.py",
+            "console": "integratedTerminal",
+            "args": [
+                "./code.ml",
+                "--log",
+                "./output.py",
+                "--interpreter"
+            ],
+            "presentation": {
+                "hidden": false,
+                "group": "debug",
+                "order": 1
+            },
+        },
+
+        {
+            "name": "Python Debugger [file]",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "modules.gen",  // Use 'module' instead of 'program'
+            "console": "integratedTerminal",
+            "args": [
+                "../code.ml",
+                "--log",
+                "--debug-compiler"
+            ],
+            "cwd": "${workspaceFolder}/src", // Set the current working directory
+            "presentation": {
+                "hidden": false,
+                "group": "debug",
+                "order": 1
+            }
+        },
+
+
+        {
             "name": "Python Debugger [stop on lexer]",
             "type": "debugpy",
             "request": "launch",
@@ -74,7 +131,7 @@
                 "group": "debug",
                 "order": 1
             },
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/src/"
         },
     ]
 }

@@ -604,14 +604,14 @@ def main(source_filename: str, options: int, *args, **kwargs):
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )
-        tui.run(parser.start, True)
+        tui.run(parser.start, True)  # pyright: ignore[reportArgumentType]
     else:
         istream: InputStream
         try:
             istream = InputStream(source_filename)
         except FileNotFoundError:
-            log_error(f"Error: The file '{source_filename}' was not found.")
-            return
+            log_error(f"Error: The file '{source_filename}' not found.")
+            sys.exit(EXIT_ERROR)
         lexer = Lexer(
             istream,  # pyright: ignore[reportPossiblyUnboundVariable]
             lambda *args, **kwargs: None,

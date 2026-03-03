@@ -298,7 +298,7 @@ class Tui:
     # endregion
 
     # region API used by your compiler to append data
-    def log_source(self, line: str, end="\n", flush=True):
+    def log_source(self, line: str = "", end="\n", flush=True):
         with self.lock:
             self.source_buf.write(f"{line}{end}")
             self.scroll_offsets[0] = 0
@@ -316,7 +316,7 @@ class Tui:
         else:
             self.mark_refresh()
 
-    def log_ir(self, line: str, end="\n", flush=True):
+    def log_ir(self, line: str = "", end="\n", flush=True):
         with self.lock:
             self.ir_buf.write(f"{line}{end}")
             self.scroll_offsets[2] = 0
@@ -325,7 +325,7 @@ class Tui:
         else:
             self.mark_refresh()
 
-    def log_code(self, line: str, end="\n", flush=True):
+    def log_code(self, line: str = "", end="\n", flush=True):
         with self.lock:
             self.code_buf.write(f"{line}{end}")
             self.scroll_offsets[3] = 0
@@ -334,7 +334,7 @@ class Tui:
         else:
             self.mark_refresh()
 
-    def log_debug(self, line: str, end="\n", flush=True):
+    def log_debug(self, line: str = "", end="\n", flush=True):
         with self.lock:
             self.log_buf.write(f"{line}{end}")
             self.scroll_offsets[4] = 0
@@ -464,7 +464,7 @@ class Tui:
             except Exception:
                 pass
 
-    def _run(self, task: Callable[[], None], hold: bool):
+    def _run(self, task: Callable[[], None], hold: bool, treat_exceptions=True):
         """Live loop + controlled generator"""
 
         # start input reader
@@ -476,18 +476,26 @@ class Tui:
             self.render(), console=self.console, refresh_per_second=20, screen=True
         ) as live:
             self._live = live
-            try:
+            if treat_exceptions:
+                try:
+                    task()
+                except Exception as e:
+                    # region Flush all buffers to show error context
+                    self.log_source("", end="\n", flush=True)
+                    self.log_tokens("", end="\n", flush=True)
+                    self.log_ir("", end="\n", flush=True)
+                    self.log_code("", end="\n", flush=True)
+                    # endregion
+                    self.log_debug(f"\n[red]{e}[/red]")
+
+                    # prints traceback
+                    # import traceback
+                    # self.log_debug(traceback.format_exc())
+
+                    self.log_debug("[blue]Press 'q' to quit.[/blue]")
+                    hold = True  # keep UI open to show error
+            else:
                 task()
-            except Exception as e:
-                # region Flush all buffers to show error context
-                self.log_source("", end="\n", flush=True)
-                self.log_tokens("", end="\n", flush=True)
-                self.log_ir("", end="\n", flush=True)
-                self.log_code("", end="\n", flush=True)
-                # endregion
-                self.log_debug(f"\n[red]{e}[/red]")
-                self.log_debug("[blue]Press 'q' to quit.[/blue]")
-                hold = True  # keep UI open to show error
 
             self.running = hold
             # Holds the process after task run.
@@ -504,9 +512,9 @@ class Tui:
         self.running = False
         t.join(timeout=0.2)
 
-    def run(self, task: Callable[[], None], hold=False):
+    def run(self, task: Callable[[], None], hold=False, treat_exceptions=True):
         try:
-            self._run(task, hold)
+            self._run(task, hold, treat_exceptions)
         except KeyboardInterrupt:
             self.running = False
             print("\nExiting.", file=sys.stderr)
