@@ -11,6 +11,7 @@ import sys
 from functools import partial
 from typing import Callable
 
+from modules.gen import CodeGenerator
 from utils.istream import InputStream, TuiInputStream
 from utils.options import Options
 from utils.tui import Tui
@@ -19,45 +20,20 @@ from modules.lexer import Lexer
 from modules.parser import Parser
 
 
-class CodeGenerator:
-
-    def __init__(self, parser: Parser, logger: Callable = log):
-        self.parser = parser
-        self._logger = logger
-
-    def start(self):
-        program = self.parser.start()
-        self.parser._log()  # Final line break
-        program.gen(logger=self._logger)
-
-
-class BufferContainer:
-    def __init__(self):
-        self.buffer: StringIO | None = None
-
-    def attach(self, buffer: StringIO):
-        self.buffer = buffer
-
-    def get_value(self) -> str:
-        if self.buffer is None:
-            raise ValueError("Buffer is not attached")
-        return self.buffer.getvalue()
-
-
 def main(
     source_filename: str,
     options: int,
-    output_file: str = "",
+    output_filename: str = "",
     *args,
     **kwargs,
 ) -> None | str:
     """
-    :param output_file: If provided, the generated code will be saved to the file path.
+    :param output_filename: If provided, the generated code will be saved to the file path.
         Will ignore `is_hybrid_out` and return None.
     :param next: Will forward instructions to run before the Tui be closed.
     """
     if options & Options.LOG:
-        tui = Tui(Tui.Mode.CODE_GEN)  # pyright: ignore[reportArgumentType]
+        tui = Tui(Tui.Mode.EXECUTION)  # pyright: ignore[reportArgumentType]
         istream: TuiInputStream  # pyright: ignore[reportRedeclaration]
         try:
             istream = TuiInputStream(
@@ -82,33 +58,76 @@ def main(
         def hybrid_logger(message, *args, end="\n", **kwargs):
             nonlocal buffer
             """Logs to both Tui and a buffer. Used for hybrid/file output mode where Tui is used for intermediary logs, and the final code is saved for later use."""
-            tui.log_code(f"\033[m{message}", *args, **kwargs)
+            tui.log_code(f"{message}", *args, **kwargs)
             buffer.write(
                 f"{message}{end}"
             )  # pyright: ignore[reportAttributeAccessIssue]
 
-        if output_file:
-            with open(output_file, "w") as f:
-                buffer = f
+        if output_filename:
+            try:
+                try:
+                    buffer = open(output_filename, "w")
+                except FileNotFoundError:
+                    log_error(f"Error: File '{output_filename}' not found")
+                    sys.exit(EXIT_ERROR)
                 code_gen = CodeGenerator(
                     parser,
                     hybrid_logger,
                 )
+
+                import subprocess
+
+                def run_interpreter1():
+                    nonlocal buffer, code_gen, tui
+                    code_gen.start()
+                    buffer.close()
+
+                    p = subprocess.Popen(
+                        f"python {output_filename}",
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )  # pyright: ignore[reportUndefinedVariable]
+                    p.wait()
+                    stdout, stderr = p.communicate()
+                    tui.log_execution(stdout.decode(), end="")
+                    tui.log_execution(stderr.decode(), end="\n")
+                    # exit(p.returncode)
+
                 tui.run(
-                    code_gen.start,
+                    run_interpreter1,
                     True,
-                    not bool(
-                        options & Options.NO_EXCEPT_TREATMENT
-                    ),  # pyright: ignore[reportCallIssue]
-                )
+                    not bool(options & Options.NO_EXCEPT_TREATMENT),
+                )  # pyright: ignore[reportCallIssue]
+            finally:
+                if buffer:  # pyright: ignore[reportPossiblyUnboundVariable]
+                    buffer.close()
             return None
         else:
-            code_gen = CodeGenerator(
-                parser,
-                logger=partial(tui.log_code, end="\n"),
-            )
+            import contextlib
+
+            buffer = StringIO()
+            code_gen = CodeGenerator(parser, hybrid_logger)
+
+            def run_interpreter2():
+                nonlocal buffer
+                code_gen.start()
+                code_string = (
+                    buffer.getvalue()  # pyright: ignore[reportAttributeAccessIssue]
+                )
+                stdout_capture = StringIO()
+                stderr_capture = StringIO()
+                with (
+                    contextlib.redirect_stdout(stdout_capture),
+                    contextlib.redirect_stderr(stderr_capture),
+                ):
+                    exec(code_string)  # pyright: ignore[reportPossiblyUnboundVariable]
+                tui.log_execution(stdout_capture.getvalue(), end="")
+                tui.log_execution(stderr_capture.getvalue(), end="\n")
+                exit(EXIT_SUCCESS)
+
             tui.run(
-                code_gen.start,
+                run_interpreter2,
                 True,
                 not bool(
                     options & Options.NO_EXCEPT_TREATMENT
@@ -128,8 +147,41 @@ def main(
             logger=lambda *args, **kwargs: None,
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )
-        code_gen = CodeGenerator(parser)
-        code_gen.start()
+        if output_filename:
+            with open(output_filename, "w") as f:
+                code_gen = CodeGenerator(
+                    parser,
+                    lambda message, *args, end="\n", **kwargs: f.write(
+                        f"{message}{end}"
+                    ),
+                )
+                code_gen.start()
+
+            import subprocess
+
+            p = subprocess.Popen(
+                f"python {output_filename}",
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )  # pyright: ignore[reportUndefinedVariable]
+            p.wait()
+            stdout, stderr = p.communicate()
+            print(stdout.decode(), end="")
+            print(stderr.decode(), end="\n")
+        else:
+            buffer = StringIO()
+            code_gen = CodeGenerator(
+                parser,
+                lambda message, *args, end="\n", **kwargs: buffer.write(
+                    f"{message}{end}"
+                ),
+            )
+            code_gen.start()
+            code_string = (
+                buffer.getvalue()
+            )  # pyright: ignore[reportAttributeAccessIssue
+            exec(code_string)  # pyright: ignore[reportUndefinedVariable]
 
 
 def show_help():
@@ -146,7 +198,7 @@ if __name__ == "__main__":
     from utils.utils import log_warning, EXIT_SUCCESS
 
     options: int = Options.NONE  # type: ignore
-    output_file: str = ""
+    output_filename: str = ""
     # Verifica se o usuário passou o nome do arquivo
     if len(sys.argv) < 2:
         log_warning(
@@ -174,12 +226,12 @@ if __name__ == "__main__":
 
                         show_help()
                         sys.exit(EXIT_ERROR)
-                    elif output_file:
+                    elif output_filename:
                         log_error(
-                            f"Error: Multiple output files specified ('{output_file}' and '{sys.argv[i]}')"
+                            f"Error: Multiple output files specified ('{output_filename}' and '{sys.argv[i]}')"
                         )
                         sys.exit(EXIT_ERROR)
                     else:
-                        output_file = sys.argv[i]
+                        output_filename = sys.argv[i]
 
-    main(sys.argv[1], options, output_file)
+    main(sys.argv[1], options, output_filename)

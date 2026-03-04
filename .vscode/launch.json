@@ -85,7 +85,8 @@
             "name": "Python Debugger [file]",
             "type": "debugpy",
             "request": "launch",
-            "module": "modules.gen",  // Use 'module' instead of 'program'
+            //"module": "utils.tui",  // Use 'module' instead of 'program'
+            "module": "utils.interpreter",
             "console": "integratedTerminal",
             "args": [
                 "../code.ml",

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""
-Usage: python ./compyler.py <source_file> [-?] [-!] [-l|-p] [-no] [--debug-compiler] [<output_file>]
+"""Mini-Lang to Python compiler. Uses the various modules to generated a python script.
+The options above allow to control the behavior of the compiler.
+Usage: python ./compiler.py <source_file> [-?] [-!] [-l|-p] [-no] [--debug-compiler] [<output_file>]
     @option [-?|--help] show help
     @option [-!|--log] log intermediary output using tui
     @option [-l|--lexer] stop on lexer. Enable log
@@ -8,8 +9,9 @@ Usage: python ./compyler.py <source_file> [-?] [-!] [-l|-p] [-no] [--debug-compi
     @option [-no|--no-optimize] don't use accumulator
     @option [--debug-compiler] don't catch exceptions in the Tui log to allow compiler debugging
 """
-
 import sys
+from typing import Callable
+
 from utils.options import *
 from utils.utils import log_error, EXIT_SUCCESS, EXIT_ERROR
 
@@ -108,31 +110,10 @@ if __name__ == "__main__":
     import modules.gen as code_gen
 
     if is_interpreter:
-        if output_file:
-            code_gen.main(source_filename, options, output_file=output_file)
-            # TODO -> Add a panel in the Tui to the interpreted file.
-            import subprocess
+        import utils.interpreter as interpreter
 
-            p = subprocess.Popen(
-                f"python {output_file}", shell=True
-            )  # pyright: ignore[reportUndefinedVariable]
-            p.wait()
-            sys.exit(p.returncode)
-
-        else:
-            code_string = code_gen.main(source_filename, options, is_hybrid_out=True)
-            try:
-                exec(code_string)  # pyright: ignore[reportArgumentType]
-            except Exception as e:
-                log_error(f"Error during execution: {e}")
-                import traceback
-                from utils.utils import log
-
-                log(f"{traceback.format_exc()}")
-                sys.exit(EXIT_ERROR)
-            exit(EXIT_SUCCESS)
-    else:
-        code_gen.main(source_filename, options, output_file=output_file)
+        interpreter.main(source_filename, options, output_file)
         exit(EXIT_SUCCESS)
 
+    code_gen.main(source_filename, options, output_file=output_file)
     # endregion
