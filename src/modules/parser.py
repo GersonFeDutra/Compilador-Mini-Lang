@@ -105,7 +105,15 @@ class Parser:
 
         expr_node = self.opers()
         self.match(Tag(";"))
-
+        
+        #Verificação de tipos na declaração
+        expr_type = self._infer_type(expr_node)
+        if expr_type != "unknown" and var_type != expr_type:
+            raise ParseError(
+                f"Erro Semântico na linha {self._lexer.line}: "
+                f"A variável '{name}' foi declarada como '{var_type}', mas recebeu um valor do tipo '{expr_type}'."
+            )
+            
         # Salvar tabelas de simbolos
         if not self._sym_table.insert(name, Symbol(name, var_type)):
             raise ParseError(f"Erro: variável '{name}' já declarada.")
@@ -121,7 +129,15 @@ class Parser:
 
         expr_node = self.opers()
         self.match(Tag(";"))
-
+        
+        sym = self._sym_table.find(name)
+        if sym:
+            expr_type = self._infer_type(expr_node)
+            if expr_type != "unknown" and sym.type != expr_type:
+                raise ParseError(
+                    f"Erro semântico na linha {self._lexer.line}: "
+                    f"A variavel '{name}' é do tipo '{sym.type}', mas está a receber um valor do tipo '{expr_type}'."
+                )
         return Assignment(name=name, value=expr_node)
 
     def print_stmt(self) -> PrintStmt:
@@ -171,6 +187,10 @@ class Parser:
         self.match(Tags.DEF)
         name = str(self._lookahead)
         self.match(Tags.ID)
+        
+        #permite a recursividade
+        self._sym_table.insert(name, Symbol(name, "function"))
+        
         self.match(Tag("("))
 
         params = []
@@ -184,6 +204,9 @@ class Parser:
                 self.match(Tags.TYPE)
                 params.append(FormalParam(name=p_name, param_type=p_type))
 
+                #salva parametros
+                self._sym_table.insert(p_name, Symbol(p_name, p_type))
+                
                 if self._lookahead == ",":
                     self.match(Tag(","))
                 else:
@@ -528,6 +551,11 @@ class Parser:
             name = str(self._lookahead)
             self.match(Tags.ID)
 
+            if self._sym_table.find(name) is None:
+                raise ParseError(
+                    f"Erro Semântico na linha {self._lexer.line}: A variavel '{name}' não foi encontrada."
+                )
+                
             if self._lookahead == "(":
                 self.match(Tag("("))
                 args = []
@@ -573,13 +601,44 @@ class Parser:
     #        )
     #        raise ParseError()
 
+    def _infer_type(self, node: ASTNode) -> str:
+        """Descobre o tipo de uma expressão e bloqueia misturas incompativeis."""
+        if isinstance(node, Literal):
+            if isinstance(node.value, str): return "str"
+            if isinstance(node.value, float): return "real"
+            if isinstance(node.value, int): return "int"
+            return "unknown"
+
+        elif isinstance(node, Identifier):
+            sym = self._sym_table.find(node.name)
+            return sym.type if sym else "unknown"
+        
+        elif isinstance(node, BinOp):
+            left_type = self._infer_type(node.left)
+            right_type = self._infer_type(node.right)
+            
+            if left_type != "unknown" and right_type != "unknown" and left_type != right_type:
+                raise ParseError(
+                    f"Erro Semântico na linha {self._lexer.line}: "
+                    f"Tipos incompatíveis na operação matemática."
+                    f"Tentativa de misturar '{left_type}' com '{right_type}'."
+                )
+            return left_type
+    
+        elif isinstance(node, FunctionCall):
+            return "int"
+        return "unknown"
+    
     def match(self, t: Tag):
         """Verifica se o caractere atual corresponde ao esperado e avança."""
         if t == self._lookahead.tag:
             self._lookahead = self._lexer.scan()
         else:
             # TODO -> Melhorar mensagens de erro
-            raise ParseError()
+            raise ParseError(
+                f"Erro Sintático na linha {self._lexer.line}:"
+                f"Era esperado '{t.name}', mas o compilador encontrou '{self._lookahead.tag.name}'."
+            )
 
 
 def main(source_filename: str, options: int, *args, **kwargs):

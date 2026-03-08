@@ -82,7 +82,7 @@ def main(
         def hybrid_logger(message, *args, end="\n", **kwargs):
             nonlocal buffer
             """Logs to both Tui and a buffer. Used for hybrid/file output mode where Tui is used for intermediary logs, and the final code is saved for later use."""
-            tui.log_code(f"\033[m{message}", *args, **kwargs)
+            tui.log_code(f"{message}", *args, **kwargs)
             buffer.write(
                 f"{message}{end}"
             )  # pyright: ignore[reportAttributeAccessIssue]

@@ -12,30 +12,26 @@ class Tag:
 
     def __init__(self, value: int | str, name: str | None = None):
         if isinstance(value, str):
-            self.value = ord(value)
+            self.value = 300
             self._name = value
         else:
             assert (
                 name is not None
             ), "name deve ser fornecido se o valor for um inteiro."
             self.value = value
-            self._name = name
+            self._name = name or f"TAG_{value}"
 
-    def __eq__(self, value: "Tag | str") -> bool:  # type: ignore
-        return (
-            isinstance(value, Tag)
-            and self.value == value.value
-            or isinstance(value, str)
-            and self._name == value
-        )
+    def __eq__(self, value) -> bool:  # type: ignore
+            if isinstance(value, Tag):
+                return self._name == value._name
+            if isinstance(value, str):
+                return self._name == value
+            return False
+        
 
-    def __ne__(self, value: "Tag | str") -> bool:  # type: ignore
-        return (
-            isinstance(value, Tag)
-            and self.value != value.value
-            or isinstance(value, str)
-            and self._name != value
-        )
+    def __ne__(self, value) -> bool:  # type: ignore
+        return not self.__eq__(value)
+        
 
     def __str__(self) -> str:
         return self._name
@@ -71,33 +67,21 @@ class Token:
         if isinstance(tag, int):
             self.tag = Tag(tag, chr(tag) if 32 <= tag <= 126 else f"TAG_{tag}")
         elif isinstance(tag, str):
-            if tag == "":
-                self.tag = Tag(0, tag)
-            else:
-                self.tag = Tag(ord(tag), tag)
+                self.tag = Tag(tag)
         else:
-            assert isinstance(tag, Tag), f"{tag}"
-            self.tag = tag
+                self.tag = tag
 
     def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, value: Tag | str
-    ) -> bool:
-        return (
-            isinstance(value, Tag)
-            and self.tag == value
-            or isinstance(value, str)
-            and self.tag.name == value
-        )
+        self, value) -> bool:
+        if isinstance(value, Tag):
+            return self.tag._name == value._name
+        if isinstance(value, str):
+            return self.tag._name == value
+        return False
 
     def __ne__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, value: Tag | str
-    ) -> bool:
-        return (
-            isinstance(value, Tag)
-            and self.tag != value
-            or isinstance(value, str)
-            and self.tag.name != value
-        )
+        self, value) -> bool:
+        return not self.__eq__(value)
 
     def __str__(self) -> str:
         return str(self.tag)
@@ -238,11 +222,11 @@ class Lexer:
             token = Token(";")
         elif self._logged_token & Lexer.LoggedToken.BLOCK:
             self._log(f"\n{self._line:3}: ", end="", flush=True)
-            self._cached_line = self._line + 1  # WATCH
+            self._cached_line = self._line  # WATCH
         else:
             self._log("\r", end="", flush=True)
             self._log(f"{self._line:3}: ", end="", flush=True)
-            self._cached_line = self._line + 1  # WATCH
+            self._cached_line = self._line  # WATCH
         self._logged_token = Lexer.LoggedToken.NONE
         return token
 
@@ -321,7 +305,7 @@ class Lexer:
             # region 3. Trata identificadores e palavras reservadas
             if self._peek.isalpha():
                 id_str = ""
-                while self._peek.isalpha():
+                while self._peek.isalnum() or self._peek == "_":
                     id_str += self._peek
                     self._peek = self._get_next_char()
 
@@ -391,7 +375,16 @@ class Lexer:
             # endregion
 
             # region 5. Trata operadores
-            t_oper = Token(self._peek)  # pyright: ignore[reportArgumentType]
+            op_str = self._peek
+            next_char = self._istream.peek()
+            
+            #op duplo
+            if op_str in ["<", ">", "=", "!"] and next_char == "=":
+                op_str += "="
+                self._peek = self._get_next_char()
+            
+            t_oper = Token(op_str)  # pyright: ignore[reportArgumentType]
+            
             if t_oper.tag.name == "":
                 return t_oper  # EOF
             if t_oper.tag.name in [" ", "\r", "\t"]:
