@@ -87,9 +87,9 @@ class Parser:
     def program(self):
         """
         Regra:
-            program -> { symTable=null; } stmts
+            program = { symTable=null; } stmts
         """
-        lista_de_comandos = self.stmts()
+        lista_de_comandos = self.stmts()  # program -> stmts
         return Program(statements=lista_de_comandos)
 
     def var_decl(self) -> VarDecl:
@@ -224,8 +224,14 @@ class Parser:
     def stmts(self) -> List[ASTNode]:
         """Statements
         Regras:
-            stmts -> stmt stmts | ϵ
-            stmt -> block | expr;
+            <statement> = <variable-decl> ";"
+                        | <assignment> ";"
+                        | <print-statement> ";"
+                        | <if-statement>
+                        | <while-statement>
+                        | <return-statement> ";"
+                        | <function-decl>
+                        | <block>
         """
         statements_list = []
 
@@ -233,8 +239,10 @@ class Parser:
             # stmt -> block
             if self._lookahead == ";":
                 self.match(Tag(";"))
+                # TODO -> Check for standalone expressions
                 continue
 
+            # stmt -> block
             if self._lookahead.tag == "{":
                 statements_list.append(self.block())
                 continue

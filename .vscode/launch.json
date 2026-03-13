@@ -164,7 +164,7 @@
             "program": "${workspaceFolder}/src/compiler.py",
             "console": "integratedTerminal",
             "args": [
-                "./samples/suc2.ml",
+                "./samples/suc6.ml",
                 "--log",
                 "./output.py",
                 "--interpreter"
