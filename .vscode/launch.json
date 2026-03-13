@@ -10,7 +10,12 @@
             "request": "launch",
             "program": "${workspaceFolder}/src//compiler.py",
             "console": "integratedTerminal",
-            "args": "${command:pickArgs}"
+            "args": "${command:pickArgs}",
+            "presentation": {
+                "hidden": false,
+                "group": "extras",
+                "order": 2
+            }
         },
 
         {
@@ -20,6 +25,23 @@
             "program": "${workspaceFolder}/src/compiler.py",
             "console": "integratedTerminal",
             "args": "./code.ml",
+            "presentation": {
+                "hidden": false,
+                "group": "debug",
+                "order": 1
+            },
+        },
+
+        {
+            "name": "Python Debugger [lexer-nolog]",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/compiler.py",
+            "console": "integratedTerminal",
+            "args": [
+                "./code.ml",
+                "--lexer"
+            ],
             "presentation": {
                 "hidden": false,
                 "group": "debug",
@@ -134,5 +156,24 @@
             },
             "cwd": "${workspaceFolder}/src/"
         },
+        
+        {
+            "name": "Test errX.ml",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/compiler.py",
+            "console": "integratedTerminal",
+            "args": [
+                "./samples/suc2.ml",
+                "--log",
+                "./output.py",
+                "--interpreter"
+            ],
+            "presentation": {
+                "hidden": false,
+                "group": "debug",
+                "order": 1
+            },
+        }
     ]
 }

@@ -181,6 +181,7 @@ def main(
             code_string = (
                 buffer.getvalue()
             )  # pyright: ignore[reportAttributeAccessIssue
+            # FIXME -> Error when using recursive functions
             exec(code_string)  # pyright: ignore[reportUndefinedVariable]
 
 

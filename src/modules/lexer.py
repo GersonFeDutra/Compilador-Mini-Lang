@@ -22,16 +22,14 @@ class Tag:
             self._name = name or f"TAG_{value}"
 
     def __eq__(self, value) -> bool:  # type: ignore
-            if isinstance(value, Tag):
-                return self._name == value._name
-            if isinstance(value, str):
-                return self._name == value
-            return False
-        
+        if isinstance(value, Tag):
+            return self._name == value._name
+        if isinstance(value, str):
+            return self._name == value
+        return False
 
     def __ne__(self, value) -> bool:  # type: ignore
         return not self.__eq__(value)
-        
 
     def __str__(self) -> str:
         return self._name
@@ -67,12 +65,13 @@ class Token:
         if isinstance(tag, int):
             self.tag = Tag(tag, chr(tag) if 32 <= tag <= 126 else f"TAG_{tag}")
         elif isinstance(tag, str):
-                self.tag = Tag(tag)
+            self.tag = Tag(tag)
         else:
-                self.tag = tag
+            self.tag = tag
 
     def __eq__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, value) -> bool:
+        self, value
+    ) -> bool:
         if isinstance(value, Tag):
             return self.tag._name == value._name
         if isinstance(value, str):
@@ -80,7 +79,8 @@ class Token:
         return False
 
     def __ne__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, value) -> bool:
+        self, value
+    ) -> bool:
         return not self.__eq__(value)
 
     def __str__(self) -> str:
@@ -135,9 +135,12 @@ class Lexer:
         self,
         istream: InputStream | TuiInputStream,
         logger: Callable[..., None] = lambda *args, **kwargs: None,
+        tab_size: int = 1,
     ):
         self._line = 1
+        self._column = 0
         self._cached_line = 1
+        self._tab_size = tab_size
         self._peek = " "
         self._istream = istream
         self._log = logger
@@ -212,14 +215,10 @@ class Lexer:
             self._peek = self._get_next_char()
         return had_nl
 
-    def _log_line_interrupt(self) -> Token | None:
+    def _log_line_interrupt(self) -> None:
         """Deals with line interrupt and returns a semicolon token if an expression was logged."""
-        token: Token | None = None
         if self._logged_token & Lexer.LoggedToken.EXPRESSION:
-            self._log(f"<;>")
-            self._log(f"{self._line:3}: ", end="", flush=True)
-            self._peek = self._get_next_char()
-            token = Token(";")
+            self._log(f"\n{self._line:3}: ", end="", flush=True)
         elif self._logged_token & Lexer.LoggedToken.BLOCK:
             self._log(f"\n{self._line:3}: ", end="", flush=True)
             self._cached_line = self._line  # WATCH
@@ -228,7 +227,6 @@ class Lexer:
             self._log(f"{self._line:3}: ", end="", flush=True)
             self._cached_line = self._line  # WATCH
         self._logged_token = Lexer.LoggedToken.NONE
-        return token
 
     def _get_next_char(self):
         """Simula o cin.get() lendo da string armazenada"""
@@ -237,10 +235,14 @@ class Lexer:
             char = self._istream.get_char()
             # Se for espaço ou tabulação, ignora
             if char in "\t":
+                self._column += self._tab_size
                 continue
             if char == "\n" or (char == "\r" and self._istream.peek() == "\n"):
                 self._line += 1
+                self._column = 0
                 return "\n"
+            else:
+                self._column += 1
             return char
         return ""  # Fim da entrada
 
@@ -256,9 +258,7 @@ class Lexer:
             # region 1. Conta o número de linhas, ignorando os espaços em branco
             while self._peek.isspace():
                 if self._peek == "\n":
-                    token = self._log_line_interrupt()
-                    if token is not None:
-                        return token
+                    self._log_line_interrupt()
                 self._peek = self._get_next_char()
             # endregion
 
@@ -273,7 +273,7 @@ class Lexer:
                 if self._peek != ".":
                     num = int(num_str)
                     self._log(f"<NUM, {num}> ", end="")
-                    self._logged_token = True
+                    self._logged_token |= Lexer.LoggedToken.EXPRESSION
                     return Num(num)
                 # endregion
                 else:
@@ -297,7 +297,7 @@ class Lexer:
                     self._peek = self._get_next_char()  # aspa final
 
                 self._log(f'<STR_LIT, "{str_val}">', end="")
-                self._logged_token = True
+                self._logged_token |= Lexer.LoggedToken.EXPRESSION
                 return Str(str_val)
             # endregion
 
@@ -319,7 +319,7 @@ class Lexer:
                         )
                     else:
                         self._log(f"<{token_found.tag.name}> ", end="")
-                    self._logged_token = True
+                    self._logged_token |= Lexer.LoggedToken.EXPRESSION
                     return token_found
 
                 # se o identificador não estiver na tabela, cria um novo
@@ -327,7 +327,7 @@ class Lexer:
                     new_id = Id(id_str)
                     self._id_table[id_str] = new_id
                     self._log(f"<{new_id.tag}, {new_id.name}> ", end="")
-                    self._logged_token = True
+                    self._logged_token |= Lexer.LoggedToken.EXPRESSION
                     return new_id
             # endregion
 
@@ -337,39 +337,29 @@ class Lexer:
                 if self._istream.peek() == "<":
                     if self._nesting_comment("#<>#"):
                         if self._logged_token:
-                            token = self._log_line_interrupt()
-                            if token is not None:
-                                return token
+                            self._log_line_interrupt()
                         self._peek = self._get_next_char()
                     continue
                 else:
                     while self._peek != "\n" and self._peek != "":
                         self._peek = self._get_next_char()
                     if self._peek == "\n":
-                        token = self._log_line_interrupt()
-                        if token is not None:
-                            return token
-                        else:
-                            self._peek = self._get_next_char()
-                            continue
+                        self._log_line_interrupt()
+                        self._peek = self._get_next_char()
+                        continue
             # //...\n and /*...*/ ]
             if self._peek == "/":
                 if self._istream.peek() == "/":
                     while self._peek != "\n" and self._peek != "":
                         self._peek = self._get_next_char()
                     if self._peek == "\n":
-                        token = self._log_line_interrupt()
-                        if token is not None:
-                            return token
-                        else:
-                            self._peek = self._get_next_char()
-                            continue
+                        self._log_line_interrupt()
+                        self._peek = self._get_next_char()
+                        continue
                 elif self._istream.peek() == "*":
                     if self._nesting_comment("/**/"):
                         if self._logged_token:
-                            token = self._log_line_interrupt()
-                            if token is not None:
-                                return token
+                            self._log_line_interrupt()
                         self._peek = self._get_next_char()
                     continue
             # endregion
@@ -377,14 +367,14 @@ class Lexer:
             # region 5. Trata operadores
             op_str = self._peek
             next_char = self._istream.peek()
-            
-            #op duplo
+
+            # op duplo
             if op_str in ["<", ">", "=", "!"] and next_char == "=":
                 op_str += "="
                 self._peek = self._get_next_char()
-            
+
             t_oper = Token(op_str)  # pyright: ignore[reportArgumentType]
-            
+
             if t_oper.tag.name == "":
                 return t_oper  # EOF
             if t_oper.tag.name in [" ", "\r", "\t"]:
@@ -393,10 +383,7 @@ class Lexer:
                 continue
             else:
                 self._log(f"<'{t_oper.tag}'> ", end="")
-                if self._logged_token & Lexer.LoggedToken.EXPRESSION:
-                    if t_oper.tag == ";":
-                        self._log("\n", end="\t")
-                else:
+                if not (self._logged_token & Lexer.LoggedToken.EXPRESSION):
                     self._logged_token |= (
                         Lexer.LoggedToken.BLOCK
                         if t_oper.tag.name in ["{", "}", ",", ";"]

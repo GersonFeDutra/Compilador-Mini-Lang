@@ -58,13 +58,10 @@ if __name__ == "__main__":
                 case "-i" | "--interpreter":
                     is_interpreter = True
                 case "-l" | "--lexer":
+                    # TODO -> Allows to each IR to generate output files
                     options |= Options.LEXER
-                    # TODO -> Allow running the lexer without Tui
-                    options |= Options.LOG
                 case "-p" | "--parser":
                     options |= Options.PARSER
-                    # TODO -> Allow running the parser without Tui
-                    options |= Options.LOG
                 case "-!" | "--log":
                     options |= Options.LOG
                 case "-no" | "--no-optimize":

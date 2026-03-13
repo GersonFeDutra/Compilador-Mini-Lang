@@ -1,4 +1,3 @@
-#!./lexer.py
 // -*- mode: cpp -*-
 // vim: set filetype=c++:
 var x : int = 5;;
@@ -13,5 +12,5 @@ def calcular ( n : int ) : int{
 }
 
 print " Calculando Fatorial de 5 🧠: " ;
-set resultado = calcular ( x ) ;
+set resultado = calcular ( x, x ) ; # FIXME -> Número na Passagem de parâmetros inválido
 print resultado ;
