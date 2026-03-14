@@ -132,54 +132,36 @@ def main(
         code_gen.start()
 
 
-def show_help():
-    print(
-        "Usage: \033[32mpython\033[m \033[34m<arquivo_fonte>\033[Options...]\n"
-        "Options:\n"
-        "  -? | --help              Show this help message and exit\n"
-        "  -! | --log               Log intermediary output using Tui\n"
-        "  -no | --no-optimize      Disable optimizations in code generation\n"
+if __name__ == "__main__":
+    import argparse
+    from utils.utils import log_warning, log_error, EXIT_SUCCESS, EXIT_ERROR
+
+    parser = argparse.ArgumentParser(
+        description="Compiler for your source files.",
+        add_help=False  # we'll add custom help options to match original
     )
 
+    # Positional arguments
+    parser.add_argument("source", help="Source file to compile")
+    parser.add_argument("output", nargs="?", default="", help="Output file (optional)")
 
-if __name__ == "__main__":
-    from utils.utils import log_warning, EXIT_SUCCESS
+    # Option flags (matching original)
+    parser.add_argument("-?", "--help", action="help", help="Show this help message and exit")
+    parser.add_argument("-!", "--log", action="store_true", help="Enable logging")
+    parser.add_argument("-no", "--no-optimize", action="store_true", help="Disable optimizations")
+    parser.add_argument("--debug-compiler", action="store_true", help="Disable exception handling for debugging")
 
-    options: int = Options.NONE  # type: ignore
-    output_file: str = ""
-    # Verifica se o usuário passou o nome do arquivo
-    if len(sys.argv) < 2:
-        log_warning(
-            "Uso: \033[32m" "python" f"\033[m {sys.argv[0]} \033[34m<arquivo_fonte>"
-        )
-        sys.exit(EXIT_ERROR)
-    elif len(sys.argv) > 2:
-        for i in range(2, len(sys.argv)):
-            # TODO -> Grouped options parsing
-            match sys.argv[i]:
-                case "-?" | "--help":
-                    show_help()
-                    sys.exit(EXIT_SUCCESS)
-                case "-!" | "--log":
-                    options |= Options.LOG
-                case "-no" | "--no-optimize":
-                    # Allows the parser to use an accumulator to process results directly
-                    options |= Options.NO_OPTIMIZE
-                case "--debug-compiler":
-                    options |= Options.NO_EXCEPT_TREATMENT
-                case _:
-                    if sys.argv[i].startswith("-"):
-                        log_error(f"Error: Unknown option '{sys.argv[i]}'")
-                        from ..compiler import show_help
+    # Parse arguments
+    args = parser.parse_args()
 
-                        show_help()
-                        sys.exit(EXIT_ERROR)
-                    elif output_file:
-                        log_error(
-                            f"Error: Multiple output files specified ('{output_file}' and '{sys.argv[i]}')"
-                        )
-                        sys.exit(EXIT_ERROR)
-                    else:
-                        output_file = sys.argv[i]
+    # Build options bitmask
+    options = Options.NONE
+    if args.log:
+        options |= Options.LOG
+    if args.no_optimize:
+        options |= Options.NO_OPTIMIZE
+    if args.debug_compiler:
+        options |= Options.NO_EXCEPT_TREATMENT
 
-    main(sys.argv[1], options, output_file)
+    # Call main with parsed values
+    main(args.source, options, args.output)

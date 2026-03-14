@@ -5,20 +5,17 @@ from utils.utils import log, log_info, log_success, log_warning
 
 class Symbol:
     """Estrutura para salvar o nome de uma variável, tipo e o tipo dos argumentos."""
-
     var: str
     type: str
-    param_types: list[str]
-
-    def __init__(
-        self, var: str, type: str, param_types: list[str] | None = None
-    ) -> None:
+    params: list['Symbol']
+    
+    def __init__(self, var: str, type: str, params: list['Symbol']=None) -> None:
         self.var = var
         self.type = type
-        self.param_types = param_types or []
+        self.params = params or []
 
     def __repr__(self) -> str:
-        return f"Symbol(var='{self.var}', type='{self.type}', param_types={self.param_types})"
+        return f"Symbol(var='{self.var}', type='{self.type}', params={self.params})"
 
 
 class SymTable:

@@ -108,7 +108,7 @@
             "type": "debugpy",
             "request": "launch",
             //"module": "utils.tui",  // Use 'module' instead of 'program'
-            "module": "utils.interpreter",
+            "module": "modules.gen",
             "console": "integratedTerminal",
             "args": [
                 "../code.ml",
@@ -164,7 +164,7 @@
             "program": "${workspaceFolder}/src/compiler.py",
             "console": "integratedTerminal",
             "args": [
-                "./samples/suc7.ml",
+                "./samples/err11.ml",
                 "--log",
                 "./output.py",
                 "--interpreter"

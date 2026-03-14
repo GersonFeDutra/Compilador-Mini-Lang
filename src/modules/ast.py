@@ -65,16 +65,28 @@ class VarDecl(ASTNode):
 
     def gen(self, logger: Callable, indent: int = 0) -> None:
         py_type = "float" if self.var_type == "real" else self.var_type
-        logger(f"{_indent(indent)}{self.name}: {py_type} = {_to_code(self.value)}")
+        val_str = _to_code(self.value)
+        
+        if self.var_type == "int":
+            val_str = f"int({val_str})"
+        logger(
+            f"{_indent(indent)}{self.name}: {py_type} = {val_str}"
+        )
 
 
 @dataclass
 class Assignment(ASTNode):
     name: str
     value: ASTNode
-
+    var_type: str = "unknown"
+    
     def gen(self, logger: Callable, indent: int = 0) -> None:
-        logger(f"{_indent(indent)}{self.name} = {_to_code(self.value)}")
+        val_str = _to_code(self.value)
+        
+        if self.var_type == "int":
+            val_str = f"int({val_str})"
+            
+        logger(f"{_indent(indent)}{self.name} = {val_str}")
 
 
 @dataclass

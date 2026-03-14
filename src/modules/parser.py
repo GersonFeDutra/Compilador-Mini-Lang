@@ -109,14 +109,17 @@ class Parser:
         # Verificação de tipos na declaração
         expr_type = self._infer_type(expr_node)
         if expr_type != "unknown" and var_type != expr_type:
-            raise ParseError(
-                f"Erro Semântico na linha {self._lexer.line}: "
-                f"A variável '{name}' foi declarada como '{var_type}', mas recebeu um valor do tipo '{expr_type}'."
+            if not(var_type == "real" and expr_type == "int"):
+                raise ParseError(
+                    f"Erro Semântico na linha {self._lexer.line}: "
+                    f"A variável '[cyan]{name}[/cyan]' foi declarada como "
+                    f"'[purple]{var_type}[/purple]', mas recebeu um valor do tipo "
+                    f"'[purple]{expr_type}[/purple]'."
             )
 
-        # Salvar tabelas de simbolos
+        # Salvar tabelas de símbolos
         if not self._sym_table.insert(name, Symbol(name, var_type)):
-            raise ParseError(f"Erro: variável '{name}' já declarada.")
+            raise ParseError(f"Erro: variável '[cyan]{name}[/cyan]' já declarada.")
         return VarDecl(name=name, var_type=var_type, value=expr_node)
 
     def assignment(self) -> Assignment:
@@ -134,11 +137,14 @@ class Parser:
         if sym:
             expr_type = self._infer_type(expr_node)
             if expr_type != "unknown" and sym.type != expr_type:
-                raise ParseError(
-                    f"Erro semântico na linha {self._lexer.line}: "
-                    f"A variavel '{name}' é do tipo '{sym.type}', mas está a receber um valor do tipo '{expr_type}'."
-                )
-        return Assignment(name=name, value=expr_node)
+                if not (sym.type == "real" and expr_type == "int"):
+                    raise ParseError(
+                        f"Erro semântico na linha {self._lexer.line}: "
+                        f"A variável '[cyan]{name}[/cyan]' é do tipo '[purple]{sym.type}[/purple]', "
+                        f"mas está a receber um valor do tipo '[purple]{expr_type}[/purple]'."
+                    )
+        
+        return Assignment(name=name, value=expr_node, var_type=sym.type)
 
     def print_stmt(self) -> PrintStmt:
         """Regra: print <expr> ;"""
@@ -213,8 +219,8 @@ class Parser:
         ret_type = str(self._lookahead)
         self.match(Tags.TYPE)
 
-        tipos_dos_parametros = [p.param_type for p in params]
-        self._sym_table.insert(name, Symbol(name, "function", tipos_dos_parametros))
+        simbolos_dos_parametros = [Symbol(p.name, p.param_type) for p in params]
+        self._sym_table.insert(name, Symbol(name, "function", simbolos_dos_parametros))
 
         body = self.block()
 
@@ -412,7 +418,7 @@ class Parser:
                 if not self._sym_table.insert(name, Symbol(name, str(t))):
                     raise ParseError(
                         f"Erro na linha {self._lexer.line}: "
-                        f"a variável '{name}' já foi declarada no escopo atual."
+                        f"a variável '[cyan]{name}[/cyan]' já foi declarada no escopo atual."
                     )
                 # cria o nó de declaraçao na ast
                 declarations.append(
@@ -502,39 +508,73 @@ class Parser:
     #         self._log('Erro: a variável já foi declarada no escopo atual')
     #         raise ParseError()
 
-    def opers(self) -> ASTNode | BinOp:
+    def opers(self):
         """Operations
+            Op. Relacionais de menor prioridade.
+        Regras:
+            # TODO -> Fix grammar comment
+            opers -> digit oper'
+            oper -> operator digit oper*
+            operator -> > | < | == | != | <= | >=
+        """
+        left_node = self.additive()
+
+        while True:
+            if self._lookahead in (">", "<", "==", "!=", "<=", ">="):
+                op_str = str(self._lookahead)
+                self.match(Tag(op_str))
+                right_node = self.additive()
+                left_node = BinOp(left=left_node, op=op_str, right=right_node)
+                self._infer_type(left_node)
+
+            else:
+                return left_node
+
+    def additive(self):
+        """Additive
+            Soma e Subtração
+        Regras:
+            # TODO -> Fix grammar comment
+            opers -> digit oper'
+            oper -> operator digit oper*
+            operator -> + | -
+        """
+        left_node = self.multiplicative()
+
+        while True:
+            if self._lookahead in ("+", "-"):
+                op_str = str(self._lookahead)
+                self.match(Tag(op_str))
+                right_node = self.multiplicative()
+                left_node = BinOp(left=left_node, op=op_str, right=right_node)
+                self._infer_type(left_node)
+
+            else:
+                return left_node
+
+
+    def multiplicative(self):
+        """Multiplicative
+            Multiplicação e divisão
         Regras:
             opers -> digit oper'
             oper -> operator digit oper*
-            operator -> + | - | * | / | > | < | ==
+            operator -> * | /
         """
+
         left_node = self.factor()
 
         while True:
-
-            if self._lookahead in (
-                "+",
-                "-",
-                "*",
-                "/",
-                ">",
-                "<",
-                "==",
-                "!=",
-                "<=",
-                ">=",
-            ):
+            if self._lookahead in ("*", "/"):
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
                 right_node = self.factor()
                 left_node = BinOp(left=left_node, op=op_str, right=right_node)
-
                 self._infer_type(left_node)
 
-            # Produção vazia (return)
             else:
                 return left_node
+
 
     def factor(self) -> ASTNode:
 
@@ -593,22 +633,24 @@ class Parser:
                 self.match(Tag(")"))
 
                 if sym.type == "function":  # and sym.params_count != -1:
-                    if len(args) != len(sym.param_types):
+                    if len(args) != len(sym.params):
                         raise ParseError(
                             f"Erro Semântico na linha {self._lexer.line}: "
-                            f"A função '[cyan]{name}[/cyan]' exige {len(sym.param_types)} "
-                            f"argumento{'s' if len(sym.param_types) > 1 else ''} "
+                            f"A função '[cyan]{name}[/cyan]' exige {len(sym.params)} "
+                            f"argumento{'s' if len(sym.params) > 1 else ''} "
                             # WARNING -> Verificar se `to_code` é seguro de ser usado aqui!
-                            f"[purple]{sym.param_types}[/purple], mas recebeu {len(args)} [purple]{[arg.to_code() for arg in args]}[/purple]."
+                            f"[purple]{sym.params}[/purple], mas recebeu {len(args)} [purple]{[arg.to_code() for arg in args]}[/purple]."
                         )
                     for i, arg_node in enumerate(args):
                         arg_type = self._infer_type(arg_node)
-                        expected_type = sym.param_types[i]
+                        param_symbol = sym.params[i]
+                        expected_type = param_symbol.type
+                        param_name = param_symbol.var
+
                         if arg_type != "unknown" and arg_type != expected_type:
                             raise ParseError(
                                 f"Erro Semântico na linha {self._lexer.line}: "
-                                # TODO -> Indicar o nome do parâmetro
-                                f"O {i+1}° parâmetro da função '[cyan]{name}[/cyan]' esperava [purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
+                                f"O {i+1}° parâmetro '[orange]{param_name}[/orange]' da função '[cyan]{name}[/cyan]' esperava [purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
                             )
                 return FunctionCall(name=name, args=args)
 
@@ -665,22 +707,16 @@ class Parser:
             left_type = self._infer_type(node.left)
             right_type = self._infer_type(node.right)
 
-            if (
-                left_type != "unknown"
-                and right_type != "unknown"
-                and left_type != right_type
-            ):
-                # ------#
-                if (left_type == "int" and right_type == "real") or (
-                    left_type == "real" and right_type == "int"
-                ):
+            if left_type != "unknown" and right_type != "unknown" and left_type != right_type:
+                #------#
+                if (left_type == "int" and right_type == "real") or (left_type == "real" and right_type == "int"):
                     left_type = "real"
-                # ------#
+                #------#
                 else:
                     raise ParseError(
                         f"Erro Semântico na linha {self._lexer.line}: "
-                        "Tipos incompatíveis na operação. "
-                        f"Tentativa de combinar [purple]'{left_type}'[/purple] com [purple]'{right_type}'[/purple]."
+                        f"Tipos incompatíveis na operação."
+                        f"Tentativa de combinar [purple]{left_type}[/purple] com [purple]{right_type}[/purple]."
                     )
             if node.op in (">", "<", "==", "!=", ">=", "<="):
                 return "bool"
