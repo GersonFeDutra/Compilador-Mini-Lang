@@ -64,9 +64,8 @@ class VarDecl(ASTNode):
     value: ASTNode
 
     def gen(self, logger: Callable, indent: int = 0) -> None:
-        logger(
-            f"{_indent(indent)}{self.name}: {self.var_type} = {_to_code(self.value)}"
-        )
+        py_type = "float" if self.var_type == "real" else self.var_type
+        logger(f"{_indent(indent)}{self.name}: {py_type} = {_to_code(self.value)}")
 
 
 @dataclass
@@ -151,6 +150,9 @@ class FunctionDecl(ASTNode):
     body: "Block"
 
     def gen(self, logger: Callable, indent: int = 0) -> None:
+        def to_py_type(t: str) -> str:
+            return "float" if t == "real" else t
+
         params = ", ".join(f"{p.name}: {p.param_type}" for p in self.params)
         ret = f" -> {self.return_type}" if getattr(self, "return_type", None) else ""
         logger(f"{_indent(indent)}def {self.name}({params}){ret}:")

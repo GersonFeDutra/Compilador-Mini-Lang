@@ -181,7 +181,12 @@ def main(
             code_string = (
                 buffer.getvalue()
             )  # pyright: ignore[reportAttributeAccessIssue
-            # FIXME -> Error when using recursive functions
+            print(
+                "\033[32m"
+                "Nota: funções recursivas podem dar erro na função `exec` interna do python, usado nesta interpretação. "
+                "Tente executar um arquivo de saída nesses casos!\033[m",
+                file=sys.stderr,
+            )
             exec(code_string)  # pyright: ignore[reportUndefinedVariable]
 
 

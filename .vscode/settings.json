@@ -12,5 +12,6 @@
     ],
     "files.associations": {
         "*.ml": "cpp"
-    }
+    },
+    "todo-tree.tree.scanMode": "workspace only"
 }

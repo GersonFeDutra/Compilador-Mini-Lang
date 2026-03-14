@@ -13,5 +13,5 @@ def calcular ( n:int ) : int {
 }
 
 print " Calculando Fatorial de 5 🧠: " ;
-set resultado = calcular ( x > 12 ) ; # FIXME -> Não deveria aceitar expressões booleanos
+set resultado = calcular ( x > 12 ) ; # OK -> Não deveria aceitar expressões booleanos
 print resultado ;

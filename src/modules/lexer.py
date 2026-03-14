@@ -108,7 +108,7 @@ class Type(Token):
 
 
 class Num(Token):
-    def __init__(self, value: int):
+    def __init__(self, value: int | float):
         super().__init__(Tags.NUM)
         self.value = value
 
@@ -162,6 +162,7 @@ class Lexer:
             "false": Token(Tags.FALSE),
             "int": Type("int"),  # 32 bits
             "float": Type("float"),  # 32 bits
+            "real": Type("real"),
             "double": Type("double"),  # 64 bits
             "bool": Type("bool"),
             "char": Type("char"),
@@ -283,6 +284,11 @@ class Lexer:
                     while self._peek.isdigit():
                         num_str += self._peek
                         self._peek = self._get_next_char()
+
+                    num_float = float(num_str)
+                    self._log(f"<NUM, {num_float}> ", end="")
+                    self._logged_token |= Lexer.LoggedToken.EXPRESSION
+                    return Num(num_float)
                     # endregion
             # endregion
             # region 2.5 Trata Strings

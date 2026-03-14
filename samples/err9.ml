@@ -5,12 +5,12 @@ var resultado : int = 1;
 
 def calcular ( n : int, o: int ) : int{
     if ( n > 0) {
-        return n * calcular ( n - 1) ;
+        return n * calcular ( n - 1) ; # OK -> Número na Passagem de parâmetros inválido
     }
     return
             o;
 }
 
 print " Calculando Fatorial de 5 🧠: " ;
-set resultado = calcular ( x ) ; # FIXME -> Número na Passagem de parâmetros inválido
+set resultado = calcular ( x ) ; # OK -> Número na Passagem de parâmetros inválido
 print resultado ;

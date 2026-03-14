@@ -12,5 +12,5 @@ def calcular ( n : int ) : int{
 }
 
 print " Calculando Fatorial de 5 🧠: " ;
-set resultado = calcular ( x, x ) ; # FIXME -> Número na Passagem de parâmetros inválido
+set resultado = calcular ( x, x ) ; # OK -> Número na Passagem de parâmetros inválido
 print resultado ;

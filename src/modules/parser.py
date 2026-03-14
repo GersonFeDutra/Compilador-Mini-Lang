@@ -50,7 +50,6 @@ class Parser:
         warn_logger: Callable = log_warning,
         optimize: bool = True,
     ):
-        # FIXME
         self._lexer = lexer
         self._lookahead: Token = Token("")
         self._optimize = optimize
@@ -188,10 +187,6 @@ class Parser:
         self.match(Tags.DEF)
         name = str(self._lookahead)
         self.match(Tags.ID)
-
-        # permite a recursividade
-        self._sym_table.insert(name, Symbol(name, "function"))
-
         self.match(Tag("("))
 
         params = []
@@ -217,6 +212,10 @@ class Parser:
         self.match(Tag(":"))
         ret_type = str(self._lookahead)
         self.match(Tags.TYPE)
+
+        tipos_dos_parametros = [p.param_type for p in params]
+        self._sym_table.insert(name, Symbol(name, "function", tipos_dos_parametros))
+
         body = self.block()
 
         return FunctionDecl(name=name, params=params, return_type=ret_type, body=body)
@@ -327,7 +326,7 @@ class Parser:
 
         if self._lookahead != "}":
             raise ParseError(
-                f"Erro na linha {self._lexer.line}:"
+                f"Erro na linha {self._lexer.line}: "
                 "era esperado '}' no final do bloco."
             )
         self.match(Tag("}"))
@@ -412,8 +411,8 @@ class Parser:
                 # ação semântica: declara a variável na tabela de símbolos
                 if not self._sym_table.insert(name, Symbol(name, str(t))):
                     raise ParseError(
-                        f"Erro na linha {self._lexer.line}:"
-                        f" a variável '{name}' já foi declarada no escopo atual."
+                        f"Erro na linha {self._lexer.line}: "
+                        f"a variável '{name}' já foi declarada no escopo atual."
                     )
                 # cria o nó de declaraçao na ast
                 declarations.append(
@@ -503,7 +502,7 @@ class Parser:
     #         self._log('Erro: a variável já foi declarada no escopo atual')
     #         raise ParseError()
 
-    def opers(self):
+    def opers(self) -> ASTNode | BinOp:
         """Operations
         Regras:
             opers -> digit oper'
@@ -531,6 +530,8 @@ class Parser:
                 right_node = self.factor()
                 left_node = BinOp(left=left_node, op=op_str, right=right_node)
 
+                self._infer_type(left_node)
+
             # Produção vazia (return)
             else:
                 return left_node
@@ -549,17 +550,31 @@ class Parser:
             self.match(Tags.NUM)
             return Literal(value=val)
 
+        elif self._lookahead.tag == Tags.TRUE:
+            self.match(Tags.TRUE)
+            return Literal(value=True)
+        elif self._lookahead.tag == Tags.FALSE:
+            self.match(Tags.FALSE)
+            return Literal(value=False)
+
         # É uma String (texto entre aspas)?
         elif self._lookahead.tag == Tags.STR_LIT:
             val = self._lookahead.value
             self.match(Tags.STR_LIT)
             return Literal(value=val)
 
+        elif self._lookahead.tag == "(":
+            self.match(Tag("("))
+            expr_node = self.opers()
+            self.match(Tag(")"))
+            return expr_node
+
         # É uma Variável sendo usada na conta (Identificador)?
         elif self._lookahead.tag == Tags.ID:
             name = str(self._lookahead)
             self.match(Tags.ID)
 
+            sym = self._sym_table.find(name)
             if self._sym_table.find(name) is None:
                 raise ParseError(
                     f"Erro Semântico na linha {self._lexer.line}: A variavel '{name}' não foi encontrada."
@@ -576,13 +591,32 @@ class Parser:
                         else:
                             break
                 self.match(Tag(")"))
+
+                if sym.type == "function":  # and sym.params_count != -1:
+                    if len(args) != len(sym.param_types):
+                        raise ParseError(
+                            f"Erro Semântico na linha {self._lexer.line}: "
+                            f"A função '[cyan]{name}[/cyan]' exige {len(sym.param_types)} "
+                            f"argumento{'s' if len(sym.param_types) > 1 else ''} "
+                            # WARNING -> Verificar se `to_code` é seguro de ser usado aqui!
+                            f"[purple]{sym.param_types}[/purple], mas recebeu {len(args)} [purple]{[arg.to_code() for arg in args]}[/purple]."
+                        )
+                    for i, arg_node in enumerate(args):
+                        arg_type = self._infer_type(arg_node)
+                        expected_type = sym.param_types[i]
+                        if arg_type != "unknown" and arg_type != expected_type:
+                            raise ParseError(
+                                f"Erro Semântico na linha {self._lexer.line}: "
+                                # TODO -> Indicar o nome do parâmetro
+                                f"O {i+1}° parâmetro da função '[cyan]{name}[/cyan]' esperava [purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
+                            )
                 return FunctionCall(name=name, args=args)
 
             return Identifier(name=name)
 
         else:
             raise ParseError(
-                f"Erro na linha {self._lexer.line}: Esperado um valor, variável ou string."
+                f"Erro na linha {self._lexer.line}: Esperado um valor, variável, booleano, string ou '('."
             )
 
         # def digit(self) -> Literal:
@@ -613,6 +647,8 @@ class Parser:
     def _infer_type(self, node: ASTNode) -> str:
         """Descobre o tipo de uma expressão e bloqueia misturas incompatíveis."""
         if isinstance(node, Literal):
+            if isinstance(node.value, bool):
+                return "bool"
             if isinstance(node.value, str):
                 return "str"
             if isinstance(node.value, float):
@@ -634,11 +670,21 @@ class Parser:
                 and right_type != "unknown"
                 and left_type != right_type
             ):
-                raise ParseError(
-                    f"Erro Semântico na linha {self._lexer.line}: "
-                    f"Tipos incompatíveis na operação matemática."
-                    f"Tentativa de misturar '{left_type}' com '{right_type}'."
-                )
+                # ------#
+                if (left_type == "int" and right_type == "real") or (
+                    left_type == "real" and right_type == "int"
+                ):
+                    left_type = "real"
+                # ------#
+                else:
+                    raise ParseError(
+                        f"Erro Semântico na linha {self._lexer.line}: "
+                        "Tipos incompatíveis na operação. "
+                        f"Tentativa de combinar [purple]'{left_type}'[/purple] com [purple]'{right_type}'[/purple]."
+                    )
+            if node.op in (">", "<", "==", "!=", ">=", "<="):
+                return "bool"
+
             return left_type
 
         elif isinstance(node, FunctionCall):
