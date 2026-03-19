@@ -1,10 +1,12 @@
-#!./venv/bin/python3
-
 import sys
+
 from typing import Callable, Optional
-from utils.utils import EXIT_ERROR, log
-from utils.istream import TuiInputStream, InputStream
 from functools import partial
+
+from ..utils.utils import EXIT_ERROR, log
+from ..utils.istream import TuiInputStream, InputStream
+from ..utils.options import Options
+from ..utils.arg_parser import ArgParser
 
 
 class Tag:
@@ -37,7 +39,10 @@ class Tag:
 
 class Tags:
     ...
+    # TODO -> Split num and real
     NUM = Tag(256, "NUM")
+    # INT = Tag(263, 'INT')
+    # REAL = Tag(264, 'REAL')
     ID = Tag(257, "ID")
     TYPE = Tag(258, "TYPE")
     TRUE = Tag(259, "TRUE")  # apenas para ilustrar
@@ -52,11 +57,8 @@ class Tags:
     DEF = Tag(268, "def")
     RETURN = Tag(269, "return")
 
-    # TODO
+    # WATCH
     # CHAR = Tag(261, 'CHAR')
-    # STR = Tag(262, 'STR')
-    # INT = Tag(263, 'INT')
-    # FLOAT = Tag(264, 'FLOAT')
     # PTR = Tag(265, 'PTR')
 
 
@@ -138,6 +140,7 @@ class Lexer:
         tab_size: int = 1,
     ):
         self._line = 1
+        # TODO -> Salvar lexeme, linha e coluna no token
         self._column = 0
         self._cached_line = 1
         self._tab_size = tab_size
@@ -145,7 +148,7 @@ class Lexer:
         self._istream = istream
         self._log = logger
         self._init_id_table()
-        # TODO -> detect empty lines: <https://chatgpt.com/g/g-p-6917e068d6c481918f28825411103d8c-compilers/c/69374318-686c-8330-a4db-d750c2e61e83>
+        # WATCH -> detect empty lines: <https://chatgpt.com/g/g-p-6917e068d6c481918f28825411103d8c-compilers/c/69374318-686c-8330-a4db-d750c2e61e83>
         # self._line_emitted_token = False
         # Logs Line Numbers
         self._log_ln: bool = not isinstance(istream, TuiInputStream)
@@ -384,7 +387,6 @@ class Lexer:
             if t_oper.tag.name == "":
                 return t_oper  # EOF
             if t_oper.tag.name in [" ", "\r", "\t"]:
-                # TODO -> better account for line breaker
                 self._peek = self._get_next_char()
                 continue
             else:
@@ -423,9 +425,35 @@ def show_help():
     )
 
 
-def main(filename: str, log_enabled: bool, *args, **kwargs) -> None:
-    if log_enabled:
-        from utils.tui import Tui
+def parse_append(parser: ArgParser) -> None:
+    # Positional arguments
+    parser.add_argument("source", help="Source file to compile")
+
+    # Option flags
+    parser.add_argument(
+        "-?", "--help", action="help", help="Show this help message and exit"
+    )
+    parser.add_argument("-!", "--log", action="store_true", help="Enable TUI logging")
+    parser.add_argument(
+        "--debug-compiler",
+        action="store_true",
+        help="Disable exception handling for debugging",
+    )
+
+
+def fetch_options(args) -> int:
+    # Build options bitmask
+    options = Options.NONE
+    if args.log:
+        options |= Options.LOG
+    if args.debug_compiler:
+        options |= Options.NO_EXCEPT_TREATMENT
+    return options
+
+
+def main(filename: str, options: int, *args, **kwargs) -> None:
+    if options & Options.LOG:
+        from ..utils.tui import Tui
 
         ui = Tui(mode=Tui.Mode.LEXER)
         istream = TuiInputStream(filename, partial(ui.log_source, end=""))
@@ -438,14 +466,25 @@ def main(filename: str, log_enabled: bool, *args, **kwargs) -> None:
 
 
 if __name__ == "__main__":
-    from utils.utils import log_warning, log_error, EXIT_ERROR
+    from ..utils.utils import log_warning, log_error
+
+    parser = ArgParser(
+        description="Tokenizer layer for your MiniLang source files.\n"
+        # TODO (Future) -> Support partial serializing of layers
+        "The generated output is for debugging purposes only. To fully-compile code you need to call the gen layer with the MiniLang source.",
+        add_help=False,  # we'll add custom help options to match original
+    )
+    parse_append(parser)
+
+    # Parse arguments
+    args = parser.parse_args()
+    options = fetch_options(args)
 
     # Verifica se o usuário passou o nome do arquivo
     if len(sys.argv) < 2:
         log_error("Error: No file name provided")
-        log_warning(
-            "Usage: \033[32m" "python" f"\033[m {sys.argv[0]} \033[34m<arquivo_fonte>"
-        )
+        show_help()
         sys.exit(EXIT_ERROR)
 
-    main(filename=sys.argv[1], log_enabled=True)
+    # Call main with parsed values
+    main(args.source, options)

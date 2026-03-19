@@ -9,15 +9,15 @@ Usage: python ./compiler.py <source_file> [<output_file>] [-?] [-!] [-no] [--deb
 from io import StringIO, TextIOWrapper
 import sys
 from functools import partial
-from typing import Callable
 
-from modules.gen import CodeGenerator
-from utils.istream import InputStream, TuiInputStream
-from utils.options import Options
-from utils.tui import Tui
-from utils.utils import EXIT_ERROR, log, log_error
-from modules.lexer import Lexer
-from modules.parser import Parser
+from ..utils.arg_parser import ArgParser
+from ..utils.istream import InputStream, TuiInputStream
+from ..utils.options import Options
+from ..utils.tui import Tui
+from ..utils.utils import EXIT_ERROR, log, log_error
+from ..modules.gen import CodeGenerator
+from ..modules.lexer import Lexer
+from ..modules.parser import Parser
 
 
 def main(
@@ -181,63 +181,35 @@ def main(
             code_string = (
                 buffer.getvalue()
             )  # pyright: ignore[reportAttributeAccessIssue
-            print(
-                "\033[32m"
-                "Nota: funções recursivas podem dar erro na função `exec` interna do python, usado nesta interpretação. "
-                "Tente executar um arquivo de saída nesses casos!\033[m",
-                file=sys.stderr,
-            )
-            exec(code_string)  # pyright: ignore[reportUndefinedVariable]
+            try:
+                exec(code_string)  # pyright: ignore[reportUndefinedVariable]
+            except Exception as e:
+                print(
+                    "\033[33m"
+                    "Nota: funções recursivas podem dar erro na função `exec` interna do python, usado nesta interpretação. "
+                    "Tente executar um arquivo de saída nesses casos!\033[m",
+                    file=sys.stderr,
+                )
 
+                import traceback
 
-def show_help():
-    print(
-        "Usage: \033[32mpython\033[m \033[34m<arquivo_fonte>\033[Options...]\n"
-        "Options:\n"
-        "  -? | --help              Show this help message and exit\n"
-        "  -! | --log               Log intermediary output using Tui\n"
-        "  -no | --no-optimize      Disable optimizations in code generation\n"
-    )
+                raise e
 
 
 if __name__ == "__main__":
-    from utils.utils import log_warning, EXIT_SUCCESS
+    from ..utils.utils import log_error, EXIT_ERROR
+    from ..modules import gen as gen
+    from ..modules import parser as ml_parser
 
-    options: int = Options.NONE  # type: ignore
-    output_filename: str = ""
-    # Verifica se o usuário passou o nome do arquivo
-    if len(sys.argv) < 2:
-        log_warning(
-            "Uso: \033[32m" "python" f"\033[m {sys.argv[0]} \033[34m<arquivo_fonte>"
-        )
-        sys.exit(EXIT_ERROR)
-    elif len(sys.argv) > 2:
-        for i in range(2, len(sys.argv)):
-            # TODO -> Grouped options parsing
-            match sys.argv[i]:
-                case "-?" | "--help":
-                    show_help()
-                    sys.exit(EXIT_SUCCESS)
-                case "-!" | "--log":
-                    options |= Options.LOG
-                case "-no" | "--no-optimize":
-                    # Allows the parser to use an accumulator to process results directly
-                    options |= Options.NO_OPTIMIZE
-                case "--debug-compiler":
-                    options |= Options.NO_EXCEPT_TREATMENT
-                case _:
-                    if sys.argv[i].startswith("-"):
-                        log_error(f"Error: Unknown option '{sys.argv[i]}'")
-                        from ..compiler import show_help
+    parser = ArgParser(
+        description="MiniLang interpreter. Uses the gen layer to compile the MiniLang source to Python code, then executes it.\n",
+        add_help=False,  # we'll add custom help options to match original
+    )
+    gen.parse_append(parser)
 
-                        show_help()
-                        sys.exit(EXIT_ERROR)
-                    elif output_filename:
-                        log_error(
-                            f"Error: Multiple output files specified ('{output_filename}' and '{sys.argv[i]}')"
-                        )
-                        sys.exit(EXIT_ERROR)
-                    else:
-                        output_filename = sys.argv[i]
+    # Parse arguments
+    args = parser.parse_args()
+    options = ml_parser.fetch_options(args)
 
-    main(sys.argv[1], options, output_filename)
+    # Call main with parsed values
+    main(args.source, options, output_filename=args.output)

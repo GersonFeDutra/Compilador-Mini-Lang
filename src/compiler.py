@@ -34,6 +34,8 @@ def show_help():
 
 
 if __name__ == "__main__":
+    # TODO (Future) -> Serialization of compiler layers. Eg.: Lexer [TOKENS file] -> Parser [AST .json] -> Code generator [.py file]
+
     # region Options
     options: int = Options.NONE  # type: ignore
     is_interpreter = False

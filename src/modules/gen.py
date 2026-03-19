@@ -11,12 +11,13 @@ import sys
 from functools import partial
 from typing import Callable
 
-from utils.istream import InputStream, TuiInputStream
-from utils.options import Options
-from utils.tui import Tui
-from utils.utils import EXIT_ERROR, log, log_error
-from modules.lexer import Lexer
-from modules.parser import Parser
+from ..utils.arg_parser import ArgParser
+from ..utils.istream import InputStream, TuiInputStream
+from ..utils.options import Options
+from ..utils.tui import Tui
+from ..utils.utils import EXIT_ERROR, log, log_error
+from ..modules.lexer import Lexer
+from ..modules.parser import Parser
 
 
 class CodeGenerator:
@@ -42,6 +43,14 @@ class BufferContainer:
         if self.buffer is None:
             raise ValueError("Buffer is not attached")
         return self.buffer.getvalue()
+
+
+def parse_append(parser: ArgParser):
+    from .parser import parse_append as append
+
+    append(parser)
+    # Positional arguments
+    parser.add_argument("output", nargs="?", default="", help="Output file (optional)")
 
 
 def main(
@@ -71,7 +80,7 @@ def main(
         parser = Parser(
             lexer,
             tui.log_ir,
-            lambda message, *args, **kwargs: tui.log_debug(
+            lambda message="", *args, **kwargs: tui.log_debug(
                 f"\033[m{message}", *args, **kwargs
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
@@ -88,6 +97,7 @@ def main(
             )  # pyright: ignore[reportAttributeAccessIssue]
 
         if output_file:
+            print(output_file)
             with open(output_file, "w") as f:
                 buffer = f
                 code_gen = CodeGenerator(
@@ -101,7 +111,7 @@ def main(
                         options & Options.NO_EXCEPT_TREATMENT
                     ),  # pyright: ignore[reportCallIssue]
                 )
-            return None
+            return
         else:
             code_gen = CodeGenerator(
                 parser,
@@ -114,6 +124,7 @@ def main(
                     options & Options.NO_EXCEPT_TREATMENT
                 ),  # pyright: ignore[reportCallIssue]
             )
+            return
     else:
         istream: InputStream
         try:
@@ -121,47 +132,56 @@ def main(
         except FileNotFoundError:
             log_error(f"Error: File '{source_filename}' not found")
             sys.exit(EXIT_ERROR)
-        lexer = Lexer(istream, lambda *args, **kwargs: None)
-        # Inicializa o parser com o conteúdo do arquivo
-        parser = Parser(
-            lexer,
-            logger=lambda *args, **kwargs: None,
-            optimize=not bool(options & Options.NO_OPTIMIZE),
-        )
-        code_gen = CodeGenerator(parser)
-        code_gen.start()
+
+        if output_file:
+            with open(output_file, "w") as f:
+                # Inicializa o lexer + parser com o conteúdo do arquivo
+                lexer = Lexer(
+                    istream,
+                    logger=lambda *args, **kwargs: None,  # Ignora logs
+                )
+                parser = Parser(
+                    lexer,
+                    logger=lambda *args, **kwargs: None,  # Ignora logs
+                    optimize=not bool(options & Options.NO_OPTIMIZE),
+                )
+                code_gen = CodeGenerator(
+                    parser,
+                    # Usa o arquivo como saída
+                    logger=lambda message="", *args, end="\n", **kwargs: f.write(
+                        f"{message}{end}"
+                    ),
+                )
+                code_gen.start()
+            return
+        else:
+            # Inicializa o lexer + parser com o conteúdo do arquivo
+            lexer = Lexer(istream, lambda *args, **kwargs: None)
+            parser = Parser(
+                lexer,
+                logger=lambda *args, **kwargs: None,
+                optimize=not bool(options & Options.NO_OPTIMIZE),
+            )
+            code_gen = CodeGenerator(parser)
+            code_gen.start()
+            return
 
 
 if __name__ == "__main__":
     import argparse
-    from utils.utils import log_warning, log_error, EXIT_SUCCESS, EXIT_ERROR
+    from ..utils.utils import log_error, EXIT_ERROR
+    from . import parser as ml_parser
 
-    parser = argparse.ArgumentParser(
-        description="Compiler for your source files.",
-        add_help=False  # we'll add custom help options to match original
+    parser = ArgParser(
+        description="Code Generation layer for your MiniLang source files. Fully compiles the MiniLang source to Python code.\n"
+        "You need to pass an output file to save the generated code.",
+        add_help=False,  # we'll add custom help options to match original
     )
 
-    # Positional arguments
-    parser.add_argument("source", help="Source file to compile")
-    parser.add_argument("output", nargs="?", default="", help="Output file (optional)")
-
-    # Option flags (matching original)
-    parser.add_argument("-?", "--help", action="help", help="Show this help message and exit")
-    parser.add_argument("-!", "--log", action="store_true", help="Enable logging")
-    parser.add_argument("-no", "--no-optimize", action="store_true", help="Disable optimizations")
-    parser.add_argument("--debug-compiler", action="store_true", help="Disable exception handling for debugging")
-
     # Parse arguments
+    parse_append(parser)
     args = parser.parse_args()
-
-    # Build options bitmask
-    options = Options.NONE
-    if args.log:
-        options |= Options.LOG
-    if args.no_optimize:
-        options |= Options.NO_OPTIMIZE
-    if args.debug_compiler:
-        options |= Options.NO_EXCEPT_TREATMENT
+    options = ml_parser.fetch_options(args)
 
     # Call main with parsed values
     main(args.source, options, args.output)

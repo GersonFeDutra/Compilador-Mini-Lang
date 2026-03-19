@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Defines the symbol table."""
-from utils.utils import log, log_info, log_success, log_warning
+from ..utils.utils import log, log_info, log_success, log_warning
 
 
 class Symbol:
     """Estrutura para salvar o nome de uma variável, tipo e o tipo dos argumentos."""
+
     var: str
     type: str
-    params: list['Symbol']
-    
-    def __init__(self, var: str, type: str, params: list['Symbol']=None) -> None:
+    params: list["Symbol"]
+
+    def __init__(self, var: str, type: str, params: list["Symbol"] = None) -> None:
         self.var = var
         self.type = type
         self.params = params or []

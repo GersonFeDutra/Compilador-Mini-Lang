@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Any
 
-from utils.utils import log
+from ..utils.utils import log
 
 
 class ASTNode:
-    pass
+    def gen(self, logger: Callable, indent: int = 0) -> None:
+        raise NotImplementedError
+
+    def to_dict(self):
+        raise NotImplementedError
 
 
 @dataclass
@@ -15,6 +19,9 @@ class Literal(ASTNode):
     def to_code(self) -> str:
         return repr(self.value)
 
+    def to_dict(self):
+        return {"type": "Literal", "value": self.value}
+
 
 @dataclass
 class Identifier(ASTNode):
@@ -22,6 +29,9 @@ class Identifier(ASTNode):
 
     def to_code(self) -> str:
         return self.name
+
+    def to_dict(self):
+        return {"type": "Identifier", "name": self.name}
 
 
 @dataclass
@@ -35,6 +45,14 @@ class BinOp(ASTNode):
         right = _to_code(self.right)
         return f"({left} {self.op} {right})"
 
+    def to_dict(self):
+        return {
+            "type": "BinOp",
+            "left": self.left.to_dict(),
+            "op": self.op,
+            "right": self.right.to_dict(),
+        }
+
 
 @dataclass
 class UnaryOp(ASTNode):
@@ -46,6 +64,13 @@ class UnaryOp(ASTNode):
             return f"(not {_to_code(self.expr)})"
         return f"({self.op}{_to_code(self.expr)})"
 
+    def to_dict(self):
+        return {
+            "type": "UnaryOp",
+            "op": self.op,
+            "expr": self.expr.to_dict(),
+        }
+
 
 @dataclass
 class FunctionCall(ASTNode):
@@ -55,6 +80,13 @@ class FunctionCall(ASTNode):
     def to_code(self) -> str:
         args = ", ".join(_to_code(a) for a in self.args)
         return f"{self.name}({args})"
+
+    def to_dict(self):
+        return {
+            "type": "FunctionCall",
+            "name": self.name,
+            "args": [arg.to_dict() for arg in self.args],
+        }
 
 
 @dataclass
@@ -66,12 +98,18 @@ class VarDecl(ASTNode):
     def gen(self, logger: Callable, indent: int = 0) -> None:
         py_type = "float" if self.var_type == "real" else self.var_type
         val_str = _to_code(self.value)
-        
+
         if self.var_type == "int":
             val_str = f"int({val_str})"
-        logger(
-            f"{_indent(indent)}{self.name}: {py_type} = {val_str}"
-        )
+        logger(f"{_indent(indent)}{self.name}: {py_type} = {val_str}")
+
+    def to_dict(self):
+        return {
+            "type": "VarDecl",
+            "name": self.name,
+            "var_type": self.var_type,
+            "value": self.value.to_dict(),
+        }
 
 
 @dataclass
@@ -79,14 +117,22 @@ class Assignment(ASTNode):
     name: str
     value: ASTNode
     var_type: str = "unknown"
-    
+
     def gen(self, logger: Callable, indent: int = 0) -> None:
         val_str = _to_code(self.value)
-        
+
         if self.var_type == "int":
             val_str = f"int({val_str})"
-            
+
         logger(f"{_indent(indent)}{self.name} = {val_str}")
+
+    def to_dict(self):
+        return {
+            "type": "Assignment",
+            "name": self.name,
+            "var_type": self.var_type,
+            "value": self.value.to_dict(),
+        }
 
 
 @dataclass
@@ -96,6 +142,12 @@ class PrintStmt(ASTNode):
     def gen(self, logger: Callable, indent: int = 0) -> None:
         logger(f"{_indent(indent)}print({_to_code(self.expr)})")
 
+    def to_dict(self):
+        return {
+            "type": "PrintStmt",
+            "expr": self.expr.to_dict(),
+        }
+
 
 @dataclass
 class ReturnStmt(ASTNode):
@@ -103,6 +155,12 @@ class ReturnStmt(ASTNode):
 
     def gen(self, logger: Callable, indent: int = 0) -> None:
         logger(f"{_indent(indent)}return {_to_code(self.expr)}")
+
+    def to_dict(self):
+        return {
+            "type": "ReturnStmt",
+            "expr": self.expr.to_dict(),
+        }
 
 
 @dataclass
@@ -115,6 +173,12 @@ class Block(ASTNode):
                 stmt.gen(logger, indent)
             except TypeError:
                 stmt.gen(logger)
+
+    def to_dict(self):
+        return {
+            "type": "Block",
+            "statements": [stmt.to_dict() for stmt in self.statements],
+        }
 
 
 @dataclass
@@ -133,6 +197,16 @@ class IfStmt(ASTNode):
             logger(f"{_indent(indent)}else:")
             self.false_block.gen(logger, indent + 1)
 
+    def to_dict(self):
+        dict = {
+            "type": "IfStmt",
+            "condition": self.condition.to_dict(),
+            "true_block": self.true_block.to_dict(),
+        }
+        if self.false_block is not None:
+            dict["false_block"] = self.false_block.to_dict()
+        return dict
+
 
 @dataclass
 class WhileStmt(ASTNode):
@@ -146,6 +220,13 @@ class WhileStmt(ASTNode):
         else:
             logger(f"{_indent(indent+1)}pass")
 
+    def to_dict(self):
+        return {
+            "type": "WhileStmt",
+            "condition": self.condition.to_dict(),
+            "body": self.body.to_dict(),
+        }
+
 
 # Nós de funçao e programa
 @dataclass
@@ -153,13 +234,16 @@ class FormalParam(ASTNode):
     name: str
     param_type: str
 
+    def to_dict(self):
+        return {"type": "FormalParam", "name": self.name, "param_type": self.param_type}
+
 
 @dataclass
 class FunctionDecl(ASTNode):
     name: str
     params: List[FormalParam]
     return_type: str
-    body: "Block"
+    body: Block
 
     def gen(self, logger: Callable, indent: int = 0) -> None:
         def to_py_type(t: str) -> str:
@@ -173,6 +257,15 @@ class FunctionDecl(ASTNode):
         else:
             logger(f"{_indent(indent+1)}pass")
 
+    def to_dict(self):
+        return {
+            "type": "FunctionDecl",
+            "name": self.name,
+            "params": [p.to_dict() for p in self.params],
+            "return_type": self.return_type,
+            "body": self.body.to_dict(),
+        }
+
 
 @dataclass
 class Program(ASTNode):
@@ -182,6 +275,12 @@ class Program(ASTNode):
         for stmt in self.statements:
             # statements receive (logger, indent)
             stmt.gen(logger)
+
+    def to_dict(self):
+        return {
+            "type": "Program",
+            "statements": [stmt.to_dict() for stmt in self.statements],
+        }
 
 
 # --- Code generation helpers attached to AST nodes ---

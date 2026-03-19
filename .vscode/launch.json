@@ -27,7 +27,24 @@
             "args": "./code.ml",
             "presentation": {
                 "hidden": false,
-                "group": "debug",
+                "group": "no log",
+                "order": 1
+            },
+        },
+
+        {
+            "name": "Python Debugger [no log - lexer]",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/compiler.py",
+            "console": "integratedTerminal",
+            "args": [
+                "./code.ml",
+                "-l"
+            ],
+            "presentation": {
+                "hidden": false,
+                "group": "no log",
                 "order": 1
             },
         },

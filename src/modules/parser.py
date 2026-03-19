@@ -1,18 +1,17 @@
-#!/usr/bin/env python3
 from functools import partial
 import sys
+import json
 from typing import Callable
-
-from utils.istream import InputStream, TuiInputStream
-from utils.options import *
-from utils.tui import Tui
-from utils.utils import EXIT_ERROR, log, log_error
-from modules.lexer import Lexer, Num, Token, Tag, Tags, Id, Type
-from modules.symbols import Symbol, SymTable
-from utils.utils import log_warning
 from queue import SimpleQueue as Queue
 
-from modules.ast import (
+from .lexer import Lexer, Num, Token, Tag, Tags, Id, Type
+from .symbols import Symbol, SymTable
+from ..utils.istream import InputStream, TuiInputStream
+from ..utils.options import *
+from ..utils.tui import Tui
+from ..utils.utils import EXIT_ERROR, log, log_error
+from ..utils.utils import log_warning
+from ..modules.ast import (
     Program,
     Block,
     Literal,
@@ -74,16 +73,12 @@ class Parser:
             )
 
         # imprimir arvore
-        self._log("\n" + "=" * 40)
-        self._log("AST GERADA COM SUCESSO:")
-        self._log("=" * 40)
-        self._log(pformat(ast_root, indent=1, width=80))
-        # self._log(ast_root.__dict__)
-        self._log("\n")
+        # self._log(pformat(ast_root, indent=1, width=80))
+        self._log(json.dumps(ast_root.to_dict(), indent=2))
 
         return ast_root
 
-    def program(self):
+    def program(self) -> Program:
         """
         Regra:
             program = { symTable=null; } stmts
@@ -109,13 +104,13 @@ class Parser:
         # Verificação de tipos na declaração
         expr_type = self._infer_type(expr_node)
         if expr_type != "unknown" and var_type != expr_type:
-            if not(var_type == "real" and expr_type == "int"):
+            if not (var_type == "real" and expr_type == "int"):
                 raise ParseError(
                     f"Erro Semântico na linha {self._lexer.line}: "
                     f"A variável '[cyan]{name}[/cyan]' foi declarada como "
                     f"'[purple]{var_type}[/purple]', mas recebeu um valor do tipo "
                     f"'[purple]{expr_type}[/purple]'."
-            )
+                )
 
         # Salvar tabelas de símbolos
         if not self._sym_table.insert(name, Symbol(name, var_type)):
@@ -143,8 +138,10 @@ class Parser:
                         f"A variável '[cyan]{name}[/cyan]' é do tipo '[purple]{sym.type}[/purple]', "
                         f"mas está a receber um valor do tipo '[purple]{expr_type}[/purple]'."
                     )
-        
-        return Assignment(name=name, value=expr_node, var_type=sym.type)
+
+        return Assignment(
+            name=name, value=expr_node, var_type=sym.type if sym else "undefined"
+        )
 
     def print_stmt(self) -> PrintStmt:
         """Regra: print <expr> ;"""
@@ -206,7 +203,7 @@ class Parser:
                 self.match(Tags.TYPE)
                 params.append(FormalParam(name=p_name, param_type=p_type))
 
-                # salva parametros
+                # save parameters
                 self._sym_table.insert(p_name, Symbol(p_name, p_type))
 
                 if self._lookahead == ",":
@@ -317,7 +314,7 @@ class Parser:
         """
         self.match(Tag("{"))
 
-        # TODO -> Check when using captures
+        # _TODO(C-um) -> Check when using captures
         # if not self.match(TAG('{')):
         #     raise ParseError(f"Erro na linha {self._lexer.line}:"
         #                      "era esperado '{' no início do bloco.")
@@ -552,7 +549,6 @@ class Parser:
             else:
                 return left_node
 
-
     def multiplicative(self):
         """Multiplicative
             Multiplicação e divisão
@@ -574,7 +570,6 @@ class Parser:
 
             else:
                 return left_node
-
 
     def factor(self) -> ASTNode:
 
@@ -707,11 +702,17 @@ class Parser:
             left_type = self._infer_type(node.left)
             right_type = self._infer_type(node.right)
 
-            if left_type != "unknown" and right_type != "unknown" and left_type != right_type:
-                #------#
-                if (left_type == "int" and right_type == "real") or (left_type == "real" and right_type == "int"):
+            if (
+                left_type != "unknown"
+                and right_type != "unknown"
+                and left_type != right_type
+            ):
+                # ------#
+                if (left_type == "int" and right_type == "real") or (
+                    left_type == "real" and right_type == "int"
+                ):
                     left_type = "real"
-                #------#
+                # ------#
                 else:
                     raise ParseError(
                         f"Erro Semântico na linha {self._lexer.line}: "
@@ -732,7 +733,7 @@ class Parser:
         if t == self._lookahead.tag:
             self._lookahead = self._lexer.scan()
         else:
-            # TODO -> Melhorar mensagens de erro
+            # WATCH -> Melhorar mensagens de erro
             raise ParseError(
                 f"Erro Sintático na linha {self._lexer.line}:\n"
                 f"\tEra esperado '{t.name}', mas o compilador encontrou '{self._lookahead.tag.name}'."
@@ -779,18 +780,40 @@ def main(source_filename: str, options: int, *args, **kwargs):
         parser._log()  # quebra de linha final
 
 
-# except ParseError:
-#     log_error("\nErro de Sintaxe")
+def parse_append(parser: ArgParser) -> None:
+    from .lexer import parse_append as append
+
+    append(parser)
+    # Option flags
+    # TODO -> Verificar se isso está realmente sendo usado
+    parser.add_argument(
+        "-no", "--no-optimize", action="store_true", help="Disable optimizations"
+    )
+
+
+def fetch_options(args) -> int:
+    # Build options bitmask
+    options = Options.NONE
+    if args.no_optimize:
+        options |= Options.NO_OPTIMIZE
+    return options
 
 
 if __name__ == "__main__":
-    from src.utils.utils import log_warning
+    from ..utils.arg_parser import ArgParser
+    from . import lexer
 
-    # Verifica se o usuário passou o nome do arquivo
-    if len(sys.argv) < 2:
-        log_warning(
-            "Uso: \033[32m" "python" f"\033[m {sys.argv[0]} \033[34m<arquivo_fonte>"
-        )
-        sys.exit(EXIT_ERROR)
+    parser = ArgParser(
+        description="Parser layer for your MiniLang source files. Does both the Syntax and Semantic Analysis generating an AST.\n"
+        "The generated output is for debugging purposes only. To fully-compile code you need to call the gen layer with the MiniLang source.",
+        add_help=False,  # we'll add custom help options to match original
+    )
+    parse_append(parser)
 
-    main(source_filename=sys.argv[1], options=Options.NO_OPTIMIZE | Options.LOG)
+    # Parse arguments
+    args = parser.parse_args()
+    options = lexer.fetch_options(args)
+    options |= fetch_options(args)
+
+    # Call main with parsed values
+    main(args.source, options)
