@@ -9,110 +9,111 @@ Usage: python ./compiler.py <source_file> [-?] [-!] [-l|-p] [-no] [--debug-compi
     @option [-no|--no-optimize] don't use accumulator
     @option [--debug-compiler] don't catch exceptions in the Tui log to allow compiler debugging
 """
-import sys
-from typing import Callable
+from enum import IntEnum
 
-from utils.options import *
-from utils.utils import log_error, EXIT_SUCCESS, EXIT_ERROR
+from .utils.arg_parser import ArgParser
+
+from .utils.options import *
+from .utils.utils import log_error, EXIT_SUCCESS, EXIT_ERROR
 
 
-def show_help():
-    # TODO -> Requires the output file for the --out option
-    print(
-        "\033[34m"
-        f"Usage: python {sys.argv[0]} <source_file> [<output_file>] [-!|--log] [-no|--no-optimize] [--interpreter|-l|-p]\n"
-        "\t<source_file>: The source code file to compile\n"
-        "\t[<output_file>]: Optional. If provided, the generated code will be saved to this file.\n"
-        "\t[-?|--help] show this help\n"
-        "\t[-!|--log] log intermediary output using tui\n"
-        "\t[-i|--interpreter] execute the generated code. If no output file is provided, the interpreter will run the generated code in memory\n"
-        "\t[-l|--lexer] stop on lexer. Enable log\n"
-        "\t[-p|--parser] stop on parser. Enable log\n"
-        "\t[-no|--no-optimize] don't use accumulator\n"
-        "\033[m"
+class StopOn(IntEnum):
+    NONE = 0
+    LEXER = 1  # Stop on Lexer
+    PARSER = 2  # Stop on Parser
+    INTERPRETER = 3  # Stop on Interpreter
+
+
+def parse_append(parser: ArgParser) -> None:
+    from .modules.gen import parse_append as append
+
+    append(parser)
+    # Option flags
+    # TODO -> Allows to each IR to generate output files
+    parser.add_argument(
+        "-l", "--lexer", action="store_true", help="Stop on lexer. Enable log"
     )
+    parser.add_argument(
+        "-p", "--parser", action="store_true", help="Stop on parser. Enable log"
+    )
+    parser.add_argument(
+        "-i", "--interpreter", action="store_true", help="Enable interpreter mode"
+    )
+
+
+def main(
+    source_filename: str,
+    options: int,
+    output_filename: str = "",
+    stop_on: StopOn = StopOn.NONE,
+    *args,
+    **kwargs,
+) -> None | str:
+    # TEST -> Each option execution must be verified.
+
+    # log_error(
+    #     f"Error: Multiple output files provided ('{output_file}' and '{sys.argv[i]}')"
+    # )
+    # endregion
+
+    match stop_on:
+        # region Lexer only
+        case StopOn.LEXER:
+            from .modules import lexer as lexer
+
+            lexer.main(source_filename, bool(options & Options.LOG))
+            exit(EXIT_SUCCESS)
+        # endregion
+
+        # region Stop at Parser
+        case StopOn.PARSER:
+            from .modules import parser
+
+            parser.main(source_filename, options)
+            exit(EXIT_SUCCESS)
+        # endregion
+
+        case _:
+            # region Full compiler
+            from .modules import gen
+
+            if stop_on == StopOn.INTERPRETER:
+                from .utils import interpreter
+
+                interpreter.main(source_filename, options, output_filename)
+                exit(EXIT_SUCCESS)
+
+    gen.main(source_filename, options, output_filename)
+    # endregion
 
 
 if __name__ == "__main__":
     # TODO (Future) -> Serialization of compiler layers. Eg.: Lexer [TOKENS file] -> Parser [AST .json] -> Code generator [.py file]
+    from .utils.utils import log_error, EXIT_ERROR
+    from .modules import parser as ml_parser
 
-    # region Options
-    options: int = Options.NONE  # type: ignore
-    is_interpreter = False
-    output_file = ""
-    # endregion
+    parser = ArgParser(
+        description="MiniLang interpreter. Uses the gen layer to compile the MiniLang source to Python code, then executes it.\n",
+        add_help=False,  # we'll add custom help options to match original
+    )
+    parse_append(parser)
 
-    # region 1. Verifica se o usuário passou o nome do arquivo
-    if len(sys.argv) < 2:
-        log_error("Error: No file name provided")
-        show_help()
-        sys.exit(EXIT_ERROR)
-    # endregion
-    # region 2. Verifica se foram passadas opções
-    elif len(sys.argv) > 2:
-        # TEST -> Each option execution must be verified.
-        for i in range(2, len(sys.argv)):
-            # TODO -> Grouped options parsing
-            match sys.argv[i]:
-                case "-?" | "--help":
-                    show_help()
-                    sys.exit()
-                case "-i" | "--interpreter":
-                    is_interpreter = True
-                case "-l" | "--lexer":
-                    # TODO -> Allows to each IR to generate output files
-                    options |= Options.LEXER
-                case "-p" | "--parser":
-                    options |= Options.PARSER
-                case "-!" | "--log":
-                    options |= Options.LOG
-                case "-no" | "--no-optimize":
-                    # Allows the parser to use an accumulator to process results directly
-                    options |= Options.NO_OPTIMIZE
-                case "--debug-compiler":
-                    options |= Options.NO_EXCEPT_TREATMENT
-                case _:
-                    if sys.argv[i].startswith("-"):
-                        log_error(f"Error: Unknown option '{sys.argv[i]}'")
-                        show_help()
-                        sys.exit(EXIT_ERROR)
-                    elif output_file:
-                        log_error(
-                            f"Error: Multiple output files provided ('{output_file}' and '{sys.argv[i]}')"
-                        )
-                        show_help()
-                        sys.exit(EXIT_ERROR)
-                    else:
-                        output_file = sys.argv[i]
+    # Parse arguments
+    args = parser.parse_args()
+    options = ml_parser.fetch_options(args)
 
-    # endregion
+    stop_on = StopOn.NONE
+    if args.lexer:
+        stop_on = StopOn.LEXER
+    if args.parser:
+        stop_on = StopOn.PARSER
+    if args.interpreter:
+        stop_on = StopOn.INTERPRETER
 
-    source_filename = sys.argv[1]
-
-    # region Lexer only
-    if options & Options.LEXER:
-        import modules.lexer as lexer
-
-        lexer.main(source_filename, bool(options & Options.LOG))
-        exit(EXIT_SUCCESS)
-    # endregion
-
-    # region Stop at Parser
-    if options & Options.PARSER:
-        import modules.parser as parser
-
-        parser.main(source_filename, options)
-        exit(EXIT_SUCCESS)
-    # endregion
-
-    # region Full compiler
-    import modules.gen as code_gen
-
-    if is_interpreter:
-        import utils.interpreter as interpreter
-
-        interpreter.main(source_filename, options, output_file)
-        exit(EXIT_SUCCESS)
-
-    code_gen.main(source_filename, options, output_file=output_file)
-    # endregion
+    # Call main with parsed values
+    main(
+        args.source,
+        options,
+        args.output,
+        stop_on,
+    )

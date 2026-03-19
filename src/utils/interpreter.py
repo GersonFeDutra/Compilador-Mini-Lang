@@ -42,13 +42,13 @@ def main(
         except FileNotFoundError:
             log_error(f"Error: File '{source_filename}' not found")
             sys.exit(EXIT_ERROR)
-        lexer = Lexer(istream, tui.log_tokens)
+        lexer = Lexer(istream, tui.log_tokens, source_filename=source_filename)
         # Inicializa o parser com o conteúdo do arquivo
         parser = Parser(
             lexer,
             tui.log_ir,
-            lambda message, *args, **kwargs: tui.log_debug(
-                f"\033[m{message}", *args, **kwargs
+            lambda message="", *args, **kwargs: tui.log_debug(
+                f"[yellow]Warning {message}[/yellow]", *args, **kwargs
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )
@@ -140,11 +140,13 @@ def main(
         except FileNotFoundError:
             log_error(f"Error: File '{source_filename}' not found")
             sys.exit(EXIT_ERROR)
-        lexer = Lexer(istream, lambda *args, **kwargs: None)
+        lexer = Lexer(
+            istream, lambda *args, **kwargs: None, source_filename=source_filename
+        )
         # Inicializa o parser com o conteúdo do arquivo
         parser = Parser(
             lexer,
-            logger=lambda *args, **kwargs: None,
+            logger=lambda *args, **kwargs: None,  # ignora logs
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )
         if output_filename:
@@ -198,7 +200,7 @@ def main(
 
 if __name__ == "__main__":
     from ..utils.utils import log_error, EXIT_ERROR
-    from ..modules import gen as gen
+    from ..modules import gen
     from ..modules import parser as ml_parser
 
     parser = ArgParser(

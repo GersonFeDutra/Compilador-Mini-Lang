@@ -19,32 +19,26 @@ See [`./scripts/install.sh`](./scripts/insttall.sh) for an example.
 
 <details>
 
-<summary>You can either run <a src="./scripts.run.sh">./scripts/run.sh</a>:</summary>
+<summary>You can either run <a src="./minilang">./minilang</a>:</summary>
 
 ```bash
-chmod +x ./scripts/run.py
-./scripts/run.py
+chmod +x ./minilang
+./minilang
 ```
 
 </details>
 <details>
-<summary>Or by activating the <a src="./venv"><code>venv</code></a> environment first than calling <a src="./src/compiler.py">compiler</a> directly:</summary>
+<summary>Or by activating the <a src="./venv"><code>venv</code></a> environment first, than calling the <a src="./src/compiler.py">compiler</a> module directly:</summary>
 
 ```bash
-#activate_path=bin/activate # e.g. (bash)
+activate_path=bin/activate # e.g. (bash)
 source .venv/$activate_path
-chmod +x ./src/compiler.py
-./src/compiler.py
 ```
-
-<details>
-<summary>You can also call it as a module:</summary>
 
 ```bash
 python -m src.compiler
 ```
 
-</details>
 </details>
 
 > [!TIP]
@@ -52,6 +46,13 @@ python -m src.compiler
 > ```bash
 > python -m src.modules.lexer
 > ```
+
+### VsCode
+
+O arquivo [.vscode/launch.json](.vscode/launch.json) contém algumas instruções de execução e debug para serem usadas com a [IDE VsCode](https://code.visualstudio.com/docs/debugtest/debugging). Após o seu ambiente estar configurado com as extensões recomendadas em [.vscode/extensions.json](.vscode/extensions.json) pressione `F5` e escolha uma das tarefas de execução.
+
+> [!NOTE]
+> A flag `--debug-compiler` do compilador Mini-Lang permite que os erros emitidos pelo processo de compilação não sejam capturados, assim repassando-os para o debugger do python.
 
 ### Others
 
@@ -70,7 +71,8 @@ python -m src.compiler
     ```
 4. Finally run it:
     ```bash
-    python compiler.py --help
+    # from this project root folder
+    python -m src.compiler --help
     ```
 
 > [!TIP]

@@ -39,6 +39,14 @@ class ParseError(Exception):
     pass
 
 
+class SyntaxError(ParseError):
+    pass
+
+
+class SemanticError(ParseError):
+    pass
+
+
 class Parser:
     _id_queue: Queue[Id]
 
@@ -66,12 +74,6 @@ class Parser:
         ast_root = self.program()
         self._lexer.finish()
 
-        # Verifica se o último caractere é o marcador vazio (nil ⇒ EOF)
-        if self._lookahead != "":
-            raise ParseError(
-                "Erro: Código extra encontrado após o fim do escopo principal."
-            )
-
         # imprimir arvore
         # self._log(pformat(ast_root, indent=1, width=80))
         self._log(json.dumps(ast_root.to_dict(), indent=2))
@@ -81,9 +83,17 @@ class Parser:
     def program(self) -> Program:
         """
         Regra:
-            program = { symTable=null; } stmts
+            program = `symTable=null;` stmts
         """
         lista_de_comandos = self.stmts()  # program -> stmts
+
+        # Verifica se o último caractere é o marcador vazio (nil ⇒ EOF)
+        if self._lookahead != "":
+            raise SyntaxError(
+                f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                f"Token desconhecido [{self._lookahead}]."
+            )
+
         return Program(statements=lista_de_comandos)
 
     def var_decl(self) -> VarDecl:
@@ -105,8 +115,8 @@ class Parser:
         expr_type = self._infer_type(expr_node)
         if expr_type != "unknown" and var_type != expr_type:
             if not (var_type == "real" and expr_type == "int"):
-                raise ParseError(
-                    f"Erro Semântico na linha {self._lexer.line}: "
+                raise SemanticError(
+                    f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
                     f"A variável '[cyan]{name}[/cyan]' foi declarada como "
                     f"'[purple]{var_type}[/purple]', mas recebeu um valor do tipo "
                     f"'[purple]{expr_type}[/purple]'."
@@ -114,7 +124,10 @@ class Parser:
 
         # Salvar tabelas de símbolos
         if not self._sym_table.insert(name, Symbol(name, var_type)):
-            raise ParseError(f"Erro: variável '[cyan]{name}[/cyan]' já declarada.")
+            raise SemanticError(
+                f"Erro semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                f"variável '[cyan]{name}[/cyan]' já declarada."
+            )
         return VarDecl(name=name, var_type=var_type, value=expr_node)
 
     def assignment(self) -> Assignment:
@@ -133,8 +146,8 @@ class Parser:
             expr_type = self._infer_type(expr_node)
             if expr_type != "unknown" and sym.type != expr_type:
                 if not (sym.type == "real" and expr_type == "int"):
-                    raise ParseError(
-                        f"Erro semântico na linha {self._lexer.line}: "
+                    raise SemanticError(
+                        f"Erro semântico [{self._lexer.filename}:{self._lexer.line}{self._lexer.column}]: "
                         f"A variável '[cyan]{name}[/cyan]' é do tipo '[purple]{sym.type}[/purple]', "
                         f"mas está a receber um valor do tipo '[purple]{expr_type}[/purple]'."
                     )
@@ -234,51 +247,54 @@ class Parser:
                         | <return-statement> ";"
                         | <function-decl>
                         | <block>
+                        | ";" `warn "empty statement"`
         """
         statements_list = []
 
         while True:
-            # stmt -> block
-            if self._lookahead == ";":
-                self.match(Tag(";"))
-                # TODO -> Check for standalone expressions
-                continue
-
-            # stmt -> block
-            if self._lookahead.tag == "{":
-                statements_list.append(self.block())
-                continue
-
-            if self._lookahead.tag == Tags.VAR:
-                statements_list.append(self.var_decl())
-                continue
-
-            if self._lookahead.tag == Tags.SET:
-                statements_list.append(self.assignment())
-                continue
-
-            if self._lookahead.tag == Tags.PRINT:
-                statements_list.append(self.print_stmt())
-                continue
-
-            if self._lookahead.tag == Tags.IF:
-                statements_list.append(self.if_stmt())
-                continue
-
-            if self._lookahead.tag == Tags.WHILE:
-                statements_list.append(self.while_stmt())
-                continue
-
-            if self._lookahead.tag == Tags.DEF:
-                statements_list.append(self.function_decl())
-                continue
-
-            if self._lookahead.tag == Tags.RETURN:
-                statements_list.append(self.return_stmt())
-                continue
-
-            # Produção vazia
-            return statements_list
+            match self._lookahead.tag:
+                # stmts -> var_decl
+                case Tags.VAR:
+                    statements_list.append(self.var_decl())
+                    continue
+                # stmts -> assignment
+                case Tags.SET:
+                    statements_list.append(self.assignment())
+                    continue
+                # stmts -> print_stmt
+                case Tags.PRINT:
+                    statements_list.append(self.print_stmt())
+                    continue
+                # stmts -> if_stmt
+                case Tags.IF:
+                    statements_list.append(self.if_stmt())
+                    continue
+                # stmts -> while_stmt
+                case Tags.WHILE:
+                    statements_list.append(self.while_stmt())
+                    continue
+                # stmts -> function_decl
+                case Tags.DEF:
+                    statements_list.append(self.function_decl())
+                    continue
+                # stmts -> return_stmt
+                case Tags.RETURN:
+                    statements_list.append(self.return_stmt())
+                    continue
+                # stmts -> block
+                case "{":
+                    statements_list.append(self.block())
+                    continue
+                # stmts -> ;
+                case ";":
+                    self.match(Tag(";"))
+                    self._warn(
+                        f"[{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                        "Empty statement. Remove single ';'."
+                    )
+                    continue
+                case _:
+                    return statements_list
 
     def expr(self) -> List[ASTNode] | None:
         """lval_lst declr_or_rval_lst | rval_lst"""
@@ -308,28 +324,23 @@ class Parser:
         """
         Regra:
             block -> { saved= symTable;
-                       symTable = SymTable(symTable);
+                       symTable = SymTable(previous=symTable);
                        print('{');
                      } { stmts } { symTable = saved; print('}'); }
         """
         self.match(Tag("{"))
 
-        # _TODO(C-um) -> Check when using captures
-        # if not self.match(TAG('{')):
-        #     raise ParseError(f"Erro na linha {self._lexer.line}:"
-        #                      "era esperado '{' no início do bloco.")
-
         # 1. Salva tabela atual
         saved_table = self._sym_table  # ação semântica
 
         # 2. cria nova tabela aninhada
-        self._sym_table = SymTable(previous=saved_table)
+        self._sym_table = SymTable(previous=saved_table)  # ação semântica
 
         comando_dos_blocos = self.stmts()
 
         if self._lookahead != "}":
-            raise ParseError(
-                f"Erro na linha {self._lexer.line}: "
+            raise SyntaxError(
+                f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
                 "era esperado '}' no final do bloco."
             )
         self.match(Tag("}"))
@@ -337,6 +348,7 @@ class Parser:
         # ação semântica: restaura tabela anterior
         self._sym_table = saved_table
         # del saved_table
+
         return Block(statements=comando_dos_blocos)
 
     def lval_lst(self) -> bool:
@@ -354,18 +366,18 @@ class Parser:
             self.queue(id)  # ação semântica: empilha o Id
 
             # REFACTOR -> Clear
-            # raise ParseError(f'Erro na linha {self._lexer.line}:'
+            # raise SyntaxError(f'Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:'
             #                  ' era esperado um identificador de variável,'
             #                  f'foi passado {self._lookahead.tag.name} ao invés disso.')
 
             # if not self.match(TAG.ID):
-            #     raise ParseError(f"Erro na linha {self._lexer.line}:"
+            #     raise SyntaxError(f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
             #                      " era esperado um identificador de variável.")
 
             # verifica se a variável foi declarada
             # symbol = self.find(name)
             # if symbol is None:
-            #     raise ParseError(f"Erro na linha {self._lexer.line}:"
+            #     raise SyntaxError(f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
             #                      f" a variável '{name}' não foi declarada.")
             # self._log(f'{name}', end='', flush=True)  # ação semântica
 
@@ -399,8 +411,8 @@ class Parser:
             t = self._lookahead
 
             if self._lookahead.tag != Tags.TYPE:
-                raise ParseError(
-                    f"Erro na linha {self._lexer.line}:"
+                raise SyntaxError(
+                    f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
                     " era esperado um identificador de tipo após declaração."
                 )
             self.match(Tags.TYPE)
@@ -413,8 +425,8 @@ class Parser:
                 name = str(id_token)
                 # ação semântica: declara a variável na tabela de símbolos
                 if not self._sym_table.insert(name, Symbol(name, str(t))):
-                    raise ParseError(
-                        f"Erro na linha {self._lexer.line}: "
+                    raise SemanticError(
+                        f"Erro semântico [{self._lexer.filename}:{self._lexer.column}]: "
                         f"a variável '[cyan]{name}[/cyan]' já foi declarada no escopo atual."
                     )
                 # cria o nó de declaraçao na ast
@@ -492,7 +504,7 @@ class Parser:
     #     while self._lookahead.tag == TAG.TYPE:
     #         type = str(self._lookahead)
     #         if not self.match(TAG.TYPE):
-    #             raise ParseError(f"Erro na linha {self._lexer.line}:"
+    #             raise SyntaxError(f"Erro sintático [{self._lexer.filename}:{self._lexer.column}]:"
     #                              " era esperado um tipo de variável.")
     #
     #     name = ''
@@ -503,7 +515,7 @@ class Parser:
     #     # insere a variável na tabela de símbolos
     #     if not self._sym_table.insert(name, s):
     #         self._log('Erro: a variável já foi declarada no escopo atual')
-    #         raise ParseError()
+    #         raise SemanticError()
 
     def opers(self):
         """Operations
@@ -611,8 +623,9 @@ class Parser:
 
             sym = self._sym_table.find(name)
             if self._sym_table.find(name) is None:
-                raise ParseError(
-                    f"Erro Semântico na linha {self._lexer.line}: A variavel '{name}' não foi encontrada."
+                raise SemanticError(
+                    f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                    f"A variável '{name}' não foi encontrada."
                 )
 
             if self._lookahead == "(":
@@ -629,8 +642,8 @@ class Parser:
 
                 if sym.type == "function":  # and sym.params_count != -1:
                     if len(args) != len(sym.params):
-                        raise ParseError(
-                            f"Erro Semântico na linha {self._lexer.line}: "
+                        raise SyntaxError(
+                            f"Erro Sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
                             f"A função '[cyan]{name}[/cyan]' exige {len(sym.params)} "
                             f"argumento{'s' if len(sym.params) > 1 else ''} "
                             # WARNING -> Verificar se `to_code` é seguro de ser usado aqui!
@@ -643,17 +656,19 @@ class Parser:
                         param_name = param_symbol.var
 
                         if arg_type != "unknown" and arg_type != expected_type:
-                            raise ParseError(
-                                f"Erro Semântico na linha {self._lexer.line}: "
-                                f"O {i+1}° parâmetro '[orange]{param_name}[/orange]' da função '[cyan]{name}[/cyan]' esperava [purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
+                            raise SemanticError(
+                                f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                                f"O {i+1}° parâmetro '[orange]{param_name}[/orange]' da função '[cyan]{name}[/cyan]' "
+                                f"esperava [purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
                             )
                 return FunctionCall(name=name, args=args)
 
             return Identifier(name=name)
 
         else:
-            raise ParseError(
-                f"Erro na linha {self._lexer.line}: Esperado um valor, variável, booleano, string ou '('."
+            raise SyntaxError(
+                f"Erro Sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                "Esperado um valor, variável, booleano, string ou '('."
             )
 
         # def digit(self) -> Literal:
@@ -714,8 +729,8 @@ class Parser:
                     left_type = "real"
                 # ------#
                 else:
-                    raise ParseError(
-                        f"Erro Semântico na linha {self._lexer.line}: "
+                    raise SemanticError(
+                        f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
                         f"Tipos incompatíveis na operação."
                         f"Tentativa de combinar [purple]{left_type}[/purple] com [purple]{right_type}[/purple]."
                     )
@@ -734,8 +749,8 @@ class Parser:
             self._lookahead = self._lexer.scan()
         else:
             # WATCH -> Melhorar mensagens de erro
-            raise ParseError(
-                f"Erro Sintático na linha {self._lexer.line}:\n"
+            raise SyntaxError(
+                f"Erro Sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:\n"
                 f"\tEra esperado '{t.name}', mas o compilador encontrou '{self._lookahead.tag.name}'."
             )
 
@@ -750,33 +765,47 @@ def main(source_filename: str, options: int, *args, **kwargs):
             )  # pyright: ignore[reportAssignmentType]
         except FileNotFoundError:
             log_error(f"Error: The file '{source_filename}' was not found.")
+            sys.exit(EXIT_ERROR)
         lexer = Lexer(
-            istream, tui.log_tokens  # pyright: ignore[reportPossiblyUnboundVariable]
+            istream,
+            tui.log_tokens,  # pyright: ignore[reportPossiblyUnboundVariable]
+            source_filename=source_filename,
         )
         # Inicia o Parser com o conteúdo do arquivo
         parser = Parser(
             lexer,
             tui.log_ir,
-            lambda message, *args, **kwargs: tui.log_debug(
-                f"\033[33m{message}", *args, **kwargs
+            lambda message="", *args, **kwargs: tui.log_debug(
+                f"[yellow]Warning {message}[/yellow]", *args, **kwargs
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )
-        tui.run(parser.start, True)  # pyright: ignore[reportArgumentType]
+        tui.run(
+            parser.start,  # pyright: ignore[reportArgumentType]
+            True,
+            not bool(options & Options.NO_EXCEPT_TREATMENT),
+        )
     else:
         istream: InputStream
         try:
             istream = InputStream(source_filename)
         except FileNotFoundError:
-            log_error(f"Error: The file '{source_filename}' not found.")
+            log_error(f"Error: File '{source_filename}' not found.")
             sys.exit(EXIT_ERROR)
         lexer = Lexer(
             istream,  # pyright: ignore[reportPossiblyUnboundVariable]
             lambda *args, **kwargs: None,
+            source_filename=source_filename,
         )
         # Inicia o Parser com o conteúdo do arquivo
         parser = Parser(lexer, optimize=bool(options & Options.NO_OPTIMIZE))
-        parser.start()
+        if options & Options.NO_EXCEPT_TREATMENT:
+            parser.start()
+        else:
+            try:
+                parser.start()
+            except Exception as e:
+                log_error(f"{e}")
         parser._log()  # quebra de linha final
 
 
@@ -792,8 +821,10 @@ def parse_append(parser: ArgParser) -> None:
 
 
 def fetch_options(args) -> int:
+    from . import lexer
+
     # Build options bitmask
-    options = Options.NONE
+    options = lexer.fetch_options(args)
     if args.no_optimize:
         options |= Options.NO_OPTIMIZE
     return options
@@ -801,7 +832,6 @@ def fetch_options(args) -> int:
 
 if __name__ == "__main__":
     from ..utils.arg_parser import ArgParser
-    from . import lexer
 
     parser = ArgParser(
         description="Parser layer for your MiniLang source files. Does both the Syntax and Semantic Analysis generating an AST.\n"
@@ -812,8 +842,7 @@ if __name__ == "__main__":
 
     # Parse arguments
     args = parser.parse_args()
-    options = lexer.fetch_options(args)
-    options |= fetch_options(args)
+    options = fetch_options(args)
 
     # Call main with parsed values
     main(args.source, options)

@@ -4,108 +4,61 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        {
-            "name": "Python Debugger [pick arguments]",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src//compiler.py",
-            "console": "integratedTerminal",
-            "args": "${command:pickArgs}",
-            "presentation": {
-                "hidden": false,
-                "group": "extras",
-                "order": 2
-            }
-        },
 
         {
-            "name": "Python Debugger [no log]",
+            "name": "Run compiler [tui]",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
-            "console": "integratedTerminal",
-            "args": "./code.ml",
-            "presentation": {
-                "hidden": false,
-                "group": "no log",
-                "order": 1
-            },
-        },
-
-        {
-            "name": "Python Debugger [no log - lexer]",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
-            "console": "integratedTerminal",
-            "args": [
-                "./code.ml",
-                "-l"
-            ],
-            "presentation": {
-                "hidden": false,
-                "group": "no log",
-                "order": 1
-            },
-        },
-
-        {
-            "name": "Python Debugger [lexer-nolog]",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
-            "console": "integratedTerminal",
-            "args": [
-                "./code.ml",
-                "--lexer"
-            ],
-            "presentation": {
-                "hidden": false,
-                "group": "debug",
-                "order": 1
-            },
-        },
-
-        {
-            "name": "Python Debugger",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
+            "module": "src.compiler",
             "console": "integratedTerminal",
             "args": [
                 "./code.ml",
                 "--log"
             ],
+            "cwd": "${workspaceFolder}",
             "presentation": {
                 "hidden": false,
-                "group": "debug",
-                "order": 1
+                "group": "compiler",
             },
         },
 
         {
-            "name": "Python Debugger [gen output]",
+            "name": "Run compiler [no tui]",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
+            "module": "src.compiler",
+            "console": "integratedTerminal",
+            "args": "./code.ml",
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "hidden": false,
+                "group": "compiler",
+            },
+        },
+
+        {
+            "name": "Run compiler [gen output]",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.compiler",
             "console": "integratedTerminal",
             "args": [
                 "./code.ml",
                 "--log",
                 "./output.py"
             ],
+            "cwd": "${workspaceFolder}",
             "presentation": {
                 "hidden": false,
-                "group": "debug",
-                "order": 1
+                "group": "compiler",
             },
         },
 
         {
-            "name": "Python Debugger [hybrid interpreter]",
+            "name": "Run compiler [hybrid interpreter]",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
+            "module": "src.compiler",
             "console": "integratedTerminal",
             "args": [
                 "./code.ml",
@@ -113,84 +66,138 @@
                 "./output.py",
                 "--interpreter"
             ],
+            "cwd": "${workspaceFolder}",
             "presentation": {
                 "hidden": false,
-                "group": "debug",
-                "order": 1
+                "group": "compiler",
             },
         },
 
         {
-            "name": "Python Debugger [file]",
+            "name": "Test sample",
             "type": "debugpy",
             "request": "launch",
-            //"module": "utils.tui",  // Use 'module' instead of 'program'
-            "module": "modules.gen",
+            "module": "src.compiler",
             "console": "integratedTerminal",
             "args": [
-                "../code.ml",
+                "${input:sample}",
+                "./output.py",
                 "--log",
-                "--debug-compiler"
+                "--interpreter"
             ],
-            "cwd": "${workspaceFolder}/src", // Set the current working directory
             "presentation": {
                 "hidden": false,
-                "group": "debug",
-                "order": 1
-            }
+                "group": "compiler"
+            },
         },
 
-
         {
-            "name": "Python Debugger [stop on lexer]",
+            "name": "Run module [debug]",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
+            "module": "${input:module}",
             "console": "integratedTerminal",
             "args": [
                 "./code.ml",
-                "--lexer",
+                "--log",
+                "--debug-compiler"
+            ],
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "hidden": false,
+                "group": "module",
+            }
+        },
+
+        {
+            "name": "Run module [no tui]",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "${input:module}",
+            "console": "integratedTerminal",
+            "args": "./code.ml",
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "hidden": false,
+                "group": "module",
+            },
+        },
+
+        {
+            "name": "Python compiler [stop on ...]",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.compiler",
+            "console": "integratedTerminal",
+            "args": [
+                "./code.ml",
+                "${input:stop}",
                 "--log"
             ],
             "presentation": {
                 "hidden": false,
-                "group": "debug",
-                "order": 1
+                "group": "stop",
             }
         },
 
+    ],
+    "inputs": [
         {
-            "name": "Python Debugger [current file]",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "args": "./code.ml",
-            "presentation": {
-                "hidden": false,
-                "group": "debug",
-                "order": 1
-            },
-            "cwd": "${workspaceFolder}/src/"
+            "id": "module",
+            "description": "Module to debug",
+            "type": "pickString",
+            "default": "src.compiler",
+            "options": [
+                "src.compiler",
+                "src.modules.lexer",
+                "src.modules.parser",
+                "src.modules.gen",
+                "src.utils.interpreter",
+                "src.utils.tui"
+            ]
         },
-        
         {
-            "name": "Test errX.ml",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/compiler.py",
-            "console": "integratedTerminal",
-            "args": [
-                "./samples/err11.ml",
-                "--log",
-                "./output.py",
+            "id": "stop",
+            "description": "Stop on",
+            "type": "pickString",
+            "default": "--lexer",
+            "options": [
+                "--lexer",
+                "--parser",
                 "--interpreter"
-            ],
-            "presentation": {
-                "hidden": false,
-                "group": "debug",
-                "order": 1
-            },
+            ]
+        },
+        {
+            "id": "sample",
+            "description": "Sample",
+            "type": "pickString",
+            "default": "./code.ml",
+            "options": [
+                "./code.ml",
+                "./samples/err1.ml",
+                "./samples/err2.ml",
+                "./samples/err3.ml",
+                "./samples/err4.ml",
+                "./samples/err5.ml",
+                "./samples/err6.ml",
+                "./samples/err7.ml",
+                "./samples/err8.ml",
+                "./samples/err9.ml",
+                "./samples/err10.ml",
+                "./samples/err11.ml",
+                "./samples/err12.ml",
+                "./samples/err13.ml",
+                "./samples/err14.ml",
+                "./samples/suc1.ml",
+                "./samples/suc2.ml",
+                "./samples/suc3.ml",
+                "./samples/suc4.ml",
+                "./samples/suc5.ml",
+                "./samples/suc6.ml",
+                "./samples/suc7.ml",
+                "./samples/suc8.ml",
+                "./samples/suc9.ml",
+            ]
         }
     ]
 }

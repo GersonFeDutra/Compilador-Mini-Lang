@@ -1,5 +1,5 @@
 #!/bin/bash
-cd $(dirname "$0")/..
+cd $(dirname "$0")
 
 if [[ ! $VIRTUAL_ENV ]]; then
     case $SHELL in
@@ -19,8 +19,5 @@ if [[ ! $VIRTUAL_ENV ]]; then
     esac
 fi
 
-if [[ ! "$@" ]]; then
-    python ./src/compiler.py ./code.ml --lexer --log "$@"
-else
-    python ./src/compiler.py $@
-fi
+set -e
+python -m src.compiler $@

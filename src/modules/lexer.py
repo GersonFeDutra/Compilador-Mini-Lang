@@ -132,17 +132,31 @@ class Lexer:
         None,
         "Cached line number from witch line is being parsed.",
     )
+    column = property(
+        lambda self: self._column,
+        None,
+        None,
+        "Cached column number from witch line is being parsed.",
+    )
+    filename = property(
+        lambda self: self._file_name,
+        None,
+        None,
+        "Cached file name from witch line is being parsed.",
+    )
 
     def __init__(
         self,
         istream: InputStream | TuiInputStream,
         logger: Callable[..., None] = lambda *args, **kwargs: None,
         tab_size: int = 1,
+        source_filename: str | None = None,
     ):
         self._line = 1
         # TODO -> Salvar lexeme, linha e coluna no token
         self._column = 0
         self._cached_line = 1
+        self._file_name = source_filename
         self._tab_size = tab_size
         self._peek = " "
         self._istream = istream
@@ -437,7 +451,7 @@ def parse_append(parser: ArgParser) -> None:
     parser.add_argument(
         "--debug-compiler",
         action="store_true",
-        help="Disable exception handling for debugging",
+        help="Toggle exception handling for debugging. Handled by default when using --log",
     )
 
 
@@ -451,18 +465,28 @@ def fetch_options(args) -> int:
     return options
 
 
-def main(filename: str, options: int, *args, **kwargs) -> None:
+def main(source_filename: str, options: int, *args, **kwargs) -> None:
     if options & Options.LOG:
         from ..utils.tui import Tui
 
         ui = Tui(mode=Tui.Mode.LEXER)
-        istream = TuiInputStream(filename, partial(ui.log_source, end=""))
-        lexer = Lexer(istream, ui.log_tokens)
-        ui.run(lexer.start, hold=True)
+        istream = TuiInputStream(source_filename, partial(ui.log_source, end=""))
+        lexer = Lexer(istream, ui.log_tokens, source_filename=source_filename)
+        ui.run(
+            lexer.start,
+            hold=True,
+            treat_exceptions=not bool(options & Options.NO_EXCEPT_TREATMENT),
+        )
     else:
-        istream = InputStream(filename)
-        lexer = Lexer(istream, log)
-        lexer.start()
+        istream = InputStream(source_filename)
+        lexer = Lexer(istream, log, source_filename=source_filename)
+        if options & Options.NO_EXCEPT_TREATMENT:
+            lexer.start()
+        else:
+            try:
+                lexer.start()
+            except Exception as e:
+                log_error(f"{e}")
 
 
 if __name__ == "__main__":

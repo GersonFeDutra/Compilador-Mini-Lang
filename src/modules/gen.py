@@ -75,13 +75,13 @@ def main(
         except FileNotFoundError:
             log_error(f"Error: File '{source_filename}' not found")
             sys.exit(EXIT_ERROR)
-        lexer = Lexer(istream, tui.log_tokens)
+        lexer = Lexer(istream, tui.log_tokens, source_filename=source_filename)
         # Inicializa o parser com o conteúdo do arquivo
         parser = Parser(
             lexer,
             tui.log_ir,
             lambda message="", *args, **kwargs: tui.log_debug(
-                f"\033[m{message}", *args, **kwargs
+                f"[yellow]Warning {message}[/yellow]", *args, **kwargs
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )
@@ -139,10 +139,11 @@ def main(
                 lexer = Lexer(
                     istream,
                     logger=lambda *args, **kwargs: None,  # Ignora logs
+                    source_filename=source_filename,
                 )
                 parser = Parser(
                     lexer,
-                    logger=lambda *args, **kwargs: None,  # Ignora logs
+                    logger=lambda message="", *args, **kwargs: None,  # Ignora logs
                     optimize=not bool(options & Options.NO_OPTIMIZE),
                 )
                 code_gen = CodeGenerator(
@@ -152,23 +153,36 @@ def main(
                         f"{message}{end}"
                     ),
                 )
-                code_gen.start()
+                if options & Options.NO_EXCEPT_TREATMENT:
+                    code_gen.start()
+                else:
+                    try:
+                        code_gen.start()
+                    except Exception as e:
+                        log_error(f"{e}")
             return
         else:
             # Inicializa o lexer + parser com o conteúdo do arquivo
-            lexer = Lexer(istream, lambda *args, **kwargs: None)
+            lexer = Lexer(
+                istream, lambda *args, **kwargs: None, source_filename=source_filename
+            )
             parser = Parser(
                 lexer,
-                logger=lambda *args, **kwargs: None,
+                logger=lambda *args, **kwargs: None,  # Ignora logs
                 optimize=not bool(options & Options.NO_OPTIMIZE),
             )
             code_gen = CodeGenerator(parser)
-            code_gen.start()
+            if options & Options.NO_EXCEPT_TREATMENT:
+                code_gen.start()
+            else:
+                try:
+                    code_gen.start()
+                except Exception as e:
+                    log_error(f"{e}")
             return
 
 
 if __name__ == "__main__":
-    import argparse
     from ..utils.utils import log_error, EXIT_ERROR
     from . import parser as ml_parser
 
