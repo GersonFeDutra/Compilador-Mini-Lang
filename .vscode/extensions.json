@@ -11,6 +11,7 @@
         "cstrap.python-snippets",
         "codeium.windsurfpyright",
         "kevinrose.vsc-python-indent",
-        "njpwerner.autodocstring"
+        "njpwerner.autodocstring",
+        "vivaxy.vscode-conventional-commits"
     ]
 }

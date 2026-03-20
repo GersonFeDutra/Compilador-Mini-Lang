@@ -190,6 +190,7 @@
                 "./samples/err13.ml",
                 "./samples/err14.ml",
                 "./samples/err15.ml",
+                "./samples/err16.ml",
                 "./samples/suc1.ml",
                 "./samples/suc2.ml",
                 "./samples/suc3.ml",
@@ -200,6 +201,7 @@
                 "./samples/suc8.ml",
                 "./samples/suc9.ml",
                 "./samples/suc10.ml",
+                "./samples/suc11.ml",
             ]
         }
     ]

@@ -108,7 +108,7 @@ class Parser:
         self.match(Tags.TYPE)
         self.match(Tag("="))
 
-        expr_node = self.opers()
+        expr_node = self.expression()
         self.match(Tag(";"))
 
         # Verificação de tipos na declaração
@@ -141,7 +141,7 @@ class Parser:
         self.match(Tags.ID)
         self.match(Tag("="))
 
-        expr_node = self.opers()
+        expr_node = self.expression()
         self.match(Tag(";"))
 
         sym = self._sym_table.find(name)
@@ -163,7 +163,7 @@ class Parser:
         """Regra: print <expr> ;"""
 
         self.match(Tags.PRINT)
-        expr_node = self.opers()
+        expr_node = self.expression()
         self.match(Tag(";"))
 
         return PrintStmt(expr=expr_node)
@@ -172,7 +172,7 @@ class Parser:
         """REGRA: if( <expression> ) <bloco> [ else <block> ]"""
         self.match(Tags.IF)
         self.match(Tag("("))
-        condition = self.opers()
+        condition = self.expression()
         self.match(Tag(")"))
 
         true_block = self.block()
@@ -186,18 +186,24 @@ class Parser:
         )
 
     def while_stmt(self) -> WhileStmt:
-        """Regra: while ( <expression> ) <block>"""
+        """While Statement:
+        Regra:
+            <while-statement> -> while ( <expression> ) <block>
+        """
         self.match(Tags.WHILE)
         self.match(Tag("("))
-        condition = self.opers()
+        condition = self.expression()
         self.match(Tag(")"))
         body = self.block()
         return WhileStmt(condition=condition, body=body)
 
     def return_stmt(self) -> ReturnStmt:
-        """Regra: return <expression> ;"""
+        """Return Statement
+        Regra:
+            <return-statement> -> return <expression> ;
+        """
         self.match(Tags.RETURN)
-        expr_node = self.opers()
+        expr_node = self.expression()
         self.match(Tag(";"))
         return ReturnStmt(expr=expr_node)
 
@@ -295,7 +301,7 @@ class Parser:
                         | <block>
                         | ";" `warn "empty statement"`
         """
-        statements_list = []
+        statements_list: List[ASTNode] = []
 
         while True:
             match self._lookahead.tag:
@@ -341,31 +347,6 @@ class Parser:
                     continue
                 case _:
                     return statements_list
-
-    # REFACTOR -> Remove
-    #     def expr(self) -> List[ASTNode] | None:
-    #         """lval_lst declr_or_rval_lst | rval_lst"""
-    #         # stmt -> lval_lst rval_lst
-    #         if self.lval_lst():
-    #             nodes = self.declr_or_rval_lst()
-    #             if nodes is None:
-    #                 self.clear_queue()
-    #                 if self._lookahead == ";":
-    #                     self._warn(
-    #                         f"[warning] standalone expression at line :{self._lexer.line}."
-    #                     )
-    #                 return []
-    #             return nodes
-    #
-    #         nodes = self.rval_lst()
-    #         # stmt -> rval_lst
-    #         if nodes is not None:
-    #             if self._lookahead == ";":
-    #                 self._warn(
-    #                     f"[warning] standalone expression at line :{self._lexer.line}."
-    #                 )
-    #             return nodes
-    #         return None
 
     def block(self, use_new_scope: bool = True) -> Block:
         """
@@ -443,95 +424,6 @@ class Parser:
         # Not a left-value
         return ret
 
-    # REFACTOR -> Remover
-    #     def declr_or_rval_lst(self) -> List[ASTNode] | None:
-    #         """Expressions
-    #         Regras:
-    #             declr_or_rval_lst -> :
-    #                 type {
-    #                     s = symTable.get(id.lexeme);
-    #                     print(id.lexeme); print(':');
-    #                     print(s.type);
-    #                 }
-    #                 | = rval_lst | ϵ
-    #         """
-    #         if self._lookahead == ":":
-    #             # declr_or_rval_lst -> : type
-    #             self.match(Tag(":"))
-    #
-    #             # TODO -> declr_or_rval_lst -> : = exprs (teremos que quebrar a regra ':' em 2 derivações)
-    #             # self.match(TAG('='))
-    #
-    #             t = self._lookahead
-    #
-    #             if self._lookahead.tag != Tags.TYPE:
-    #                 raise SyntaxError(
-    #                     f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
-    #                     " era esperado um identificador de tipo após declaração."
-    #                 )
-    #             self.match(Tags.TYPE)
-    #             assert isinstance(t, Type)
-    #
-    #             declarations = []
-    #             while not self.queue_empty():
-    #                 id_token = self.deque()
-    #                 # assert id is not None
-    #                 name = str(id_token)
-    #                 # ação semântica: declara a variável na tabela de símbolos
-    #                 if not self._sym_table.insert(
-    #                     name, Symbol(name, str(t), self._lexer.coords)
-    #                 ):
-    #                     raise SemanticError(
-    #                         f"Erro semântico [{self._lexer.filename}:{self._lexer.column}]: "
-    #                         f"a variável '[cyan]{name}[/cyan]' já foi declarada no escopo atual."
-    #                     )
-    #                 # cria o nó de declaração na ast
-    #                 declarations.append(
-    #                     VarDecl(name=name, var_type=str(t), value=Literal(None))
-    #                 )
-    #             return declarations
-    #
-    #         elif self._lookahead == "=":
-    #             # declr_or_rval_lst -> = rval_lst
-    #             self.match(Tag("="))
-    #             valores = self.rval_lst() or []
-    #
-    #             assignments = []
-    #
-    #             while not self.queue_empty():
-    #                 id_token = self.deque()
-    #                 name = str(id_token)
-    #
-    #                 val_node = valores.pop(0) if valores else Literal(None)
-    #                 assignments.append(Assignment(name=name, value=val_node))
-    #             return assignments
-    #         return None
-
-    #     def rval_lst(self) -> List[ASTNode] | None:
-    #         """R-value list
-    #         Regras:
-    #             rval_lst -> rval [, rval_lst]'
-    #             rval -> expr { id=deque()); print(id+'=') }
-    #         """
-    #         exprs = []
-    #         if self.queue_empty():
-    #             # Standalone expression
-    #             while self._lookahead.tag == Tags.NUM or self._lookahead in ("+", "-"):
-    #                 exprs.append(self.opers())
-    #                 if self._lookahead == ",":
-    #                     self.match(Tag(","))
-    #                 else:
-    #                     return exprs
-    #             return None if not exprs else exprs
-    #
-    #         while True:
-    #             exprs.append(self.opers())
-    #             if self._lookahead == ",":
-    #                 self.match(Tag(","))
-    #             else:
-    #                 break
-    #         return exprs
-
     def queue_empty(self) -> bool:
         """Checks if the id_queue is empty."""
         return self._id_queue.empty()
@@ -551,14 +443,12 @@ class Parser:
         while not self.queue_empty():
             self.deque()
 
-    def opers(self):
-        """Operations
-            Op. Relacionais de menor prioridade.
+    def expression(self):
+        """Expression
         Regras:
-            # TODO -> Fix grammar comment
-            opers -> digit oper'
-            oper -> operator digit oper*
-            operator -> > | < | == | != | <= | >=
+            <expression> -> <simple-expression> { <relational-op> <simple-expression> }
+            <simple-expression> -> <term> { <additive-op> <term> }
+            <term> -> <factor> { <multiplicative-op> <factor> }
         """
         left_node = self.additive()
 
@@ -646,7 +536,7 @@ class Parser:
 
         elif self._lookahead.tag == "(":
             self.match(Tag("("))
-            expr_node = self.opers()
+            expr_node = self.expression()
             self.match(Tag(")"))
             return expr_node
 
@@ -667,7 +557,7 @@ class Parser:
                 args = []
                 if self._lookahead != ")":
                     while True:
-                        args.append(self.opers())
+                        args.append(self.expression())
                         if self._lookahead == ",":
                             self.match(Tag(","))
                         else:
@@ -709,27 +599,6 @@ class Parser:
         """
         Regra: digit -> digit { print(digit) }
         """
-
-    # REFACTOR -> Remover
-    #   modifier = 1
-    #   if self._lookahead == "+":
-    #       self.match(Tag("+"))
-    #   elif self._lookahead == "-":
-    #       self.match(Tag("-"))
-    #       modifier = -1
-
-    #   if self._lookahead.tag == Tags.NUM:
-    #       assert isinstance(self._lookahead, Num)
-    #       num_value = self._lookahead.value * modifier
-    #       # self._lexer._log(f"{self._lookahead}", end=" ", flush=True)
-    #       self.match(self._lookahead.tag)
-    #       return Literal(value=num_value)
-    #   else:
-    #       log_error(
-    #           f"\nErro na linha {self._lexer.line}:"
-    #           f"\033[35m dígito era esperado, obteve {self._lookahead} ao invés disso."
-    #        )
-    #        raise ParseError()
 
     def _infer_type(self, node: ASTNode) -> str:
         """Descobre o tipo de uma expressão e bloqueia misturas incompatíveis."""
