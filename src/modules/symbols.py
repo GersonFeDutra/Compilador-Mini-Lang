@@ -3,20 +3,39 @@
 from ..utils.utils import log, log_info, log_success, log_warning
 
 
+class Coords:
+    """A symbol coordinates in the source code."""
+
+    def __init__(self, line: int, column: int) -> None:
+        self.line = line
+        self.column = column
+
+    def __str__(self) -> str:
+        return f"{self.line}:{self.column}"
+
+
 class Symbol:
     """Estrutura para salvar o nome de uma variável, tipo e o tipo dos argumentos."""
 
     var: str
     type: str
     params: list["Symbol"]
+    coords: Coords
 
-    def __init__(self, var: str, type: str, params: list["Symbol"] = None) -> None:
+    def __init__(
+        self,
+        var: str,
+        type: str,
+        coords: Coords,
+        params: list["Symbol"] | None = None,
+    ) -> None:
         self.var = var
         self.type = type
         self.params = params or []
+        self.coords = coords
 
     def __repr__(self) -> str:
-        return f"Symbol(var='{self.var}', type='{self.type}', params={self.params})"
+        return f"Symbol(var='{self.var}', type='{self.type}', params={self.params}, coords={self.coords})"
 
 
 class SymTable:
@@ -53,6 +72,13 @@ class SymTable:
         self.table[id] = symbol
         return True
 
+    def is_shadowing(self, id: str) -> bool:
+        """Verifica se uma variável com o mesmo nome foi declarada no escopo anterior."""
+        return self.previous.has(id) if self.previous is not None else False
+
+    def has(self, id: str) -> bool:
+        return id in self.table
+
     def find(self, id) -> Symbol | None:
         """
         Busca por um símbolo na tabela.
@@ -83,7 +109,7 @@ if __name__ == "__main__":
     log_success("Escopo Global Criado!")
 
     # inserir uma variável global 'x' (int)
-    sym1 = Symbol("x", "int")
+    sym1 = Symbol("x", "int", Coords(1, 1))
     global_scope.insert("x", sym1)
     log_success(f"Inserido no escopo Global: x -> {global_scope.find('x')}")
     # endregion
@@ -94,7 +120,7 @@ if __name__ == "__main__":
     log_success("Escopo local criado dentro do escopo global!")
 
     # inserir uma variável local 'y' (float)
-    sym2 = Symbol("y", "float")
+    sym2 = Symbol("y", "float", Coords(2, 1))
     local_scope.insert("y", sym2)
     # endregion
 
@@ -111,7 +137,7 @@ if __name__ == "__main__":
 
     # region 4. Sombreamento (Shadowing)
     log_info("Inserindo 'x' no escopo local (Shadowing)...")
-    sym3 = Symbol("x", "char")  # Novo x, agora char
+    sym3 = Symbol("x", "char", Coords(3, 1))  # Novo x, agora char
     local_scope.insert("x", sym3)
 
     log_warning(

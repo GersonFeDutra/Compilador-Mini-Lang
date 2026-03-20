@@ -1,7 +1,9 @@
 import sys
 
-from typing import Callable, Optional
+from typing import Callable
 from functools import partial
+
+from src.modules.symbols import Coords
 
 from ..utils.utils import EXIT_ERROR, log
 from ..utils.istream import TuiInputStream, InputStream
@@ -133,10 +135,16 @@ class Lexer:
         "Cached line number from witch line is being parsed.",
     )
     column = property(
-        lambda self: self._column,
+        lambda self: self._cached_column,
         None,
         None,
         "Cached column number from witch line is being parsed.",
+    )
+    coords = property(
+        lambda self: Coords(self._cached_line, self._cached_column),
+        None,
+        None,
+        "Cached coordinates from witch line is being parsed.",
     )
     filename = property(
         lambda self: self._file_name,
@@ -153,9 +161,9 @@ class Lexer:
         source_filename: str | None = None,
     ):
         self._line = 1
-        # TODO -> Salvar lexeme, linha e coluna no token
-        self._column = 0
         self._cached_line = 1
+        self._column = 1
+        self._cached_column = 1
         self._file_name = source_filename
         self._tab_size = tab_size
         self._peek = " "
@@ -280,6 +288,41 @@ class Lexer:
                 self._peek = self._get_next_char()
             # endregion
 
+            # region 4. Ignora comentários
+            # #...\n and #<...>#
+            if self._peek == "#":
+                if self._istream.peek() == "<":
+                    if self._nesting_comment("#<>#"):
+                        if self._logged_token:
+                            self._log_line_interrupt()
+                        self._peek = self._get_next_char()
+                    continue
+                else:
+                    while self._peek != "\n" and self._peek != "":
+                        self._peek = self._get_next_char()
+                    if self._peek == "\n":
+                        self._log_line_interrupt()
+                        self._peek = self._get_next_char()
+                        continue
+            # //...\n and /*...*/ ]
+            if self._peek == "/":
+                if self._istream.peek() == "/":
+                    while self._peek != "\n" and self._peek != "":
+                        self._peek = self._get_next_char()
+                    if self._peek == "\n":
+                        self._log_line_interrupt()
+                        self._peek = self._get_next_char()
+                        continue
+                elif self._istream.peek() == "*":
+                    if self._nesting_comment("/**/"):
+                        if self._logged_token:
+                            self._log_line_interrupt()
+                        self._peek = self._get_next_char()
+                    continue
+            # endregion
+
+            self._cached_column = self._column
+
             # region 2. Trata números
             if self._peek.isdigit():
                 # region Inteiros
@@ -352,39 +395,6 @@ class Lexer:
                     self._log(f"<{new_id.tag}, {new_id.name}> ", end="")
                     self._logged_token |= Lexer.LoggedToken.EXPRESSION
                     return new_id
-            # endregion
-
-            # region 4. Ignora comentários
-            # #...\n and #<...>#
-            if self._peek == "#":
-                if self._istream.peek() == "<":
-                    if self._nesting_comment("#<>#"):
-                        if self._logged_token:
-                            self._log_line_interrupt()
-                        self._peek = self._get_next_char()
-                    continue
-                else:
-                    while self._peek != "\n" and self._peek != "":
-                        self._peek = self._get_next_char()
-                    if self._peek == "\n":
-                        self._log_line_interrupt()
-                        self._peek = self._get_next_char()
-                        continue
-            # //...\n and /*...*/ ]
-            if self._peek == "/":
-                if self._istream.peek() == "/":
-                    while self._peek != "\n" and self._peek != "":
-                        self._peek = self._get_next_char()
-                    if self._peek == "\n":
-                        self._log_line_interrupt()
-                        self._peek = self._get_next_char()
-                        continue
-                elif self._istream.peek() == "*":
-                    if self._nesting_comment("/**/"):
-                        if self._logged_token:
-                            self._log_line_interrupt()
-                        self._peek = self._get_next_char()
-                    continue
             # endregion
 
             # region 5. Trata operadores

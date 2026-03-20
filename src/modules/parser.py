@@ -90,7 +90,7 @@ class Parser:
         # Verifica se o último caractere é o marcador vazio (nil ⇒ EOF)
         if self._lookahead != "":
             raise SyntaxError(
-                f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                f"[b][Erro sintático] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
                 f"Token desconhecido [{self._lookahead}]."
             )
 
@@ -116,17 +116,20 @@ class Parser:
         if expr_type != "unknown" and var_type != expr_type:
             if not (var_type == "real" and expr_type == "int"):
                 raise SemanticError(
-                    f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                    f"[b][Erro Semântico] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
                     f"A variável '[cyan]{name}[/cyan]' foi declarada como "
                     f"'[purple]{var_type}[/purple]', mas recebeu um valor do tipo "
                     f"'[purple]{expr_type}[/purple]'."
                 )
 
         # Salvar tabelas de símbolos
-        if not self._sym_table.insert(name, Symbol(name, var_type)):
+        if not self._sym_table.insert(name, Symbol(name, var_type, self._lexer.coords)):
+            dupl: Symbol = self._sym_table.find(
+                name
+            )  # pyright: ignore[reportAssignmentType]
             raise SemanticError(
-                f"Erro semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
-                f"variável '[cyan]{name}[/cyan]' já declarada."
+                f"[b][Erro semântico] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
+                f"variável '[cyan]{name}[/cyan]' já declarada em [{dupl.coords}]."
             )
         return VarDecl(name=name, var_type=var_type, value=expr_node)
 
@@ -147,7 +150,7 @@ class Parser:
             if expr_type != "unknown" and sym.type != expr_type:
                 if not (sym.type == "real" and expr_type == "int"):
                     raise SemanticError(
-                        f"Erro semântico [{self._lexer.filename}:{self._lexer.line}{self._lexer.column}]: "
+                        f"[b][Erro semântico] [{self._lexer.filename}:{self._lexer.line}{self._lexer.column}]:[/b] "
                         f"A variável '[cyan]{name}[/cyan]' é do tipo '[purple]{sym.type}[/purple]', "
                         f"mas está a receber um valor do tipo '[purple]{expr_type}[/purple]'."
                     )
@@ -199,25 +202,57 @@ class Parser:
         return ReturnStmt(expr=expr_node)
 
     def function_decl(self) -> FunctionDecl:
-        """Regra def <id> ( [ <params>] ) : <type> <block>"""
+        """Function Declaration
+        Regras:
+            <function-decl> -> "def" <identifier> "(" [ <formal-params> ] ")" ":" <type> <block>
+            <formal-params> -> <formal-param> { "," <formal-param> }
+            <formal-param> -> <identifier> ":" <type>
+        """
         self.match(Tags.DEF)
-        name = str(self._lookahead)
+        name = str(self._lookahead)  # ação semântica
         self.match(Tags.ID)
         self.match(Tag("("))
 
-        params = []
+        # 1. Salva tabela atual
+        saved_table = self._sym_table
 
+        # 2. cria nova tabela aninhada
+        self._sym_table = SymTable(previous=saved_table)
+
+        # 3. Salva os parâmetros da função
+        params = []
         if self._lookahead.tag == Tags.ID:
+            # <formal-params> → <formal-param> { "," <formal-param> }
             while True:
-                p_name = str(self._lookahead)
+                p_name = str(self._lookahead)  # ação semântica
                 self.match(Tags.ID)
                 self.match(Tag(":"))
-                p_type = str(self._lookahead)
+                p_type = str(self._lookahead)  # ação semântica
                 self.match(Tags.TYPE)
+
+                # ação semântica: `params.append(<f-p>.node)`
                 params.append(FormalParam(name=p_name, param_type=p_type))
 
-                # save parameters
-                self._sym_table.insert(p_name, Symbol(p_name, p_type))
+                # ação semântica:
+                if not self._sym_table.insert(
+                    p_name, Symbol(p_name, p_type, self._lexer.coords)
+                ):
+                    dupl: Symbol = self._sym_table.find(
+                        p_name
+                    )  # pyright: ignore[reportAssignmentType]
+                    raise SyntaxError(
+                        f"[b][Erro de sintaxe] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
+                        f"o parâmetro '[cyan]{p_name}[/cyan]' já existe em [{dupl.coords.line}:{dupl.coords.column}]."
+                    )
+                if self._sym_table.is_shadowing(p_name):
+                    shadow: Symbol = saved_table.find(
+                        p_name
+                    )  # pyright: ignore[reportAssignmentType]
+                    self._warn(
+                        f"[b][{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] O parâmetro de nome '[cyan]{p_name}[/cyan]' "
+                        "está sombreando (shadowing) um símbolo de mesmo nome neste escopo em "
+                        f"[{shadow.coords.line}:{shadow.coords.column}]."
+                    )
 
                 if self._lookahead == ",":
                     self.match(Tag(","))
@@ -226,13 +261,24 @@ class Parser:
 
         self.match(Tag(")"))
         self.match(Tag(":"))
-        ret_type = str(self._lookahead)
+        ret_type = str(self._lookahead)  # ação semântica
         self.match(Tags.TYPE)
 
-        simbolos_dos_parametros = [Symbol(p.name, p.param_type) for p in params]
-        self._sym_table.insert(name, Symbol(name, "function", simbolos_dos_parametros))
+        # 4. Salva a definição da função
+        param_symbols = [
+            Symbol(p.name, p.param_type, self._lexer.coords) for p in params
+        ]
+        def_sym = Symbol(name, "function", self._lexer.coords, param_symbols)
 
-        body = self.block()
+        # 5. Insere a função na tabela em seu próprio escopo (permite recursão)
+        self._sym_table.insert(name, def_sym)
+
+        # 6. Gera o corpo da função usando o escopo temporário da função
+        body = self.block(False)
+
+        # 7. restaura tabela anterior salvando a definição da função no escopo anterior
+        self._sym_table = saved_table
+        self._sym_table.insert(name, def_sym)
 
         return FunctionDecl(name=name, params=params, return_type=ret_type, body=body)
 
@@ -289,39 +335,42 @@ class Parser:
                 case ";":
                     self.match(Tag(";"))
                     self._warn(
-                        f"[{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                        f"[b][{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
                         "Empty statement. Remove single ';'."
                     )
                     continue
                 case _:
                     return statements_list
 
-    def expr(self) -> List[ASTNode] | None:
-        """lval_lst declr_or_rval_lst | rval_lst"""
-        # stmt -> lval_lst rval_lst
-        if self.lval_lst():
-            nodes = self.declr_or_rval_lst()
-            if nodes is None:
-                self.clear_queue()
-                if self._lookahead == ";":
-                    self._warn(
-                        f"[warning] standalone expression at line :{self._lexer.line}."
-                    )
-                return []
-            return nodes
+    # REFACTOR -> Remove
+    #     def expr(self) -> List[ASTNode] | None:
+    #         """lval_lst declr_or_rval_lst | rval_lst"""
+    #         # stmt -> lval_lst rval_lst
+    #         if self.lval_lst():
+    #             nodes = self.declr_or_rval_lst()
+    #             if nodes is None:
+    #                 self.clear_queue()
+    #                 if self._lookahead == ";":
+    #                     self._warn(
+    #                         f"[warning] standalone expression at line :{self._lexer.line}."
+    #                     )
+    #                 return []
+    #             return nodes
+    #
+    #         nodes = self.rval_lst()
+    #         # stmt -> rval_lst
+    #         if nodes is not None:
+    #             if self._lookahead == ";":
+    #                 self._warn(
+    #                     f"[warning] standalone expression at line :{self._lexer.line}."
+    #                 )
+    #             return nodes
+    #         return None
 
-        nodes = self.rval_lst()
-        # stmt -> rval_lst
-        if nodes is not None:
-            if self._lookahead == ";":
-                self._warn(
-                    f"[warning] standalone expression at line :{self._lexer.line}."
-                )
-            return nodes
-        return None
-
-    def block(self) -> Block:
+    def block(self, use_new_scope: bool = True) -> Block:
         """
+        :param: use_new_scope: Quando `False` pode ser útil no caso em que o
+                escopo é especificado na chamada acima.
         Regra:
             block -> { saved= symTable;
                        symTable = SymTable(previous=symTable);
@@ -330,26 +379,30 @@ class Parser:
         """
         self.match(Tag("{"))
 
-        # 1. Salva tabela atual
-        saved_table = self._sym_table  # ação semântica
+        if use_new_scope:
+            # 1. Salva tabela atual
+            saved_table = self._sym_table  # ação semântica
 
-        # 2. cria nova tabela aninhada
-        self._sym_table = SymTable(previous=saved_table)  # ação semântica
+            # 2. cria nova tabela aninhada
+            self._sym_table = SymTable(previous=saved_table)  # ação semântica
 
-        comando_dos_blocos = self.stmts()
+        block_stmts = self.stmts()
 
         if self._lookahead != "}":
             raise SyntaxError(
-                f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                f"[b][Erro sintático] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
                 "era esperado '}' no final do bloco."
             )
         self.match(Tag("}"))
 
-        # ação semântica: restaura tabela anterior
-        self._sym_table = saved_table
-        # del saved_table
+        if use_new_scope:
+            # 3. restaura tabela anterior
+            self._sym_table = (
+                saved_table  # pyright: ignore[reportPossiblyUnboundVariable]
+            )
+            # del # Símbolos no escopo do bloco acessado ja não são mais necessários
 
-        return Block(statements=comando_dos_blocos)
+        return Block(statements=block_stmts)
 
     def lval_lst(self) -> bool:
         """Left-value list
@@ -390,91 +443,94 @@ class Parser:
         # Not a left-value
         return ret
 
-    def declr_or_rval_lst(self) -> List[ASTNode] | None:
-        """Expressions
-        Regras:
-            declr_or_rval_lst -> :
-                type {
-                    s = symTable.get(id.lexeme);
-                    print(id.lexeme); print(':');
-                    print(s.type);
-                }
-                | = rval_lst | ϵ
-        """
-        if self._lookahead == ":":
-            # declr_or_rval_lst -> : type
-            self.match(Tag(":"))
+    # REFACTOR -> Remover
+    #     def declr_or_rval_lst(self) -> List[ASTNode] | None:
+    #         """Expressions
+    #         Regras:
+    #             declr_or_rval_lst -> :
+    #                 type {
+    #                     s = symTable.get(id.lexeme);
+    #                     print(id.lexeme); print(':');
+    #                     print(s.type);
+    #                 }
+    #                 | = rval_lst | ϵ
+    #         """
+    #         if self._lookahead == ":":
+    #             # declr_or_rval_lst -> : type
+    #             self.match(Tag(":"))
+    #
+    #             # TODO -> declr_or_rval_lst -> : = exprs (teremos que quebrar a regra ':' em 2 derivações)
+    #             # self.match(TAG('='))
+    #
+    #             t = self._lookahead
+    #
+    #             if self._lookahead.tag != Tags.TYPE:
+    #                 raise SyntaxError(
+    #                     f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
+    #                     " era esperado um identificador de tipo após declaração."
+    #                 )
+    #             self.match(Tags.TYPE)
+    #             assert isinstance(t, Type)
+    #
+    #             declarations = []
+    #             while not self.queue_empty():
+    #                 id_token = self.deque()
+    #                 # assert id is not None
+    #                 name = str(id_token)
+    #                 # ação semântica: declara a variável na tabela de símbolos
+    #                 if not self._sym_table.insert(
+    #                     name, Symbol(name, str(t), self._lexer.coords)
+    #                 ):
+    #                     raise SemanticError(
+    #                         f"Erro semântico [{self._lexer.filename}:{self._lexer.column}]: "
+    #                         f"a variável '[cyan]{name}[/cyan]' já foi declarada no escopo atual."
+    #                     )
+    #                 # cria o nó de declaração na ast
+    #                 declarations.append(
+    #                     VarDecl(name=name, var_type=str(t), value=Literal(None))
+    #                 )
+    #             return declarations
+    #
+    #         elif self._lookahead == "=":
+    #             # declr_or_rval_lst -> = rval_lst
+    #             self.match(Tag("="))
+    #             valores = self.rval_lst() or []
+    #
+    #             assignments = []
+    #
+    #             while not self.queue_empty():
+    #                 id_token = self.deque()
+    #                 name = str(id_token)
+    #
+    #                 val_node = valores.pop(0) if valores else Literal(None)
+    #                 assignments.append(Assignment(name=name, value=val_node))
+    #             return assignments
+    #         return None
 
-            # TODO -> declr_or_rval_lst -> : = exprs (teremos que quebrar a regra ':' em 2 derivações)
-            # self.match(TAG('='))
-
-            t = self._lookahead
-
-            if self._lookahead.tag != Tags.TYPE:
-                raise SyntaxError(
-                    f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
-                    " era esperado um identificador de tipo após declaração."
-                )
-            self.match(Tags.TYPE)
-            assert isinstance(t, Type)
-
-            declarations = []
-            while not self.queue_empty():
-                id_token = self.deque()
-                # assert id is not None
-                name = str(id_token)
-                # ação semântica: declara a variável na tabela de símbolos
-                if not self._sym_table.insert(name, Symbol(name, str(t))):
-                    raise SemanticError(
-                        f"Erro semântico [{self._lexer.filename}:{self._lexer.column}]: "
-                        f"a variável '[cyan]{name}[/cyan]' já foi declarada no escopo atual."
-                    )
-                # cria o nó de declaraçao na ast
-                declarations.append(
-                    VarDecl(name=name, var_type=str(t), value=Literal(None))
-                )
-            return declarations
-
-        elif self._lookahead == "=":
-            # declr_or_rval_lst -> = rval_lst
-            self.match(Tag("="))
-            valores = self.rval_lst() or []
-
-            assignments = []
-
-            while not self.queue_empty():
-                id_token = self.deque()
-                name = str(id_token)
-
-                val_node = valores.pop(0) if valores else Literal(None)
-                assignments.append(Assignment(name=name, value=val_node))
-            return assignments
-        return None
-
-    def rval_lst(self) -> List[ASTNode] | None:
-        """R-value list
-        Regras:
-            rval_lst -> rval [, rval_lst]'
-            rval -> expr { id=deque()); print(id+'=') }
-        """
-        exprs = []
-        if self.queue_empty():
-            # Standalone expression
-            while self._lookahead.tag == Tags.NUM or self._lookahead in ("+", "-"):
-                exprs.append(self.opers())
-                if self._lookahead == ",":
-                    self.match(Tag(","))
-                else:
-                    return exprs
-            return None if not exprs else exprs
-
-        while True:
-            exprs.append(self.opers())
-            if self._lookahead == ",":
-                self.match(Tag(","))
-            else:
-                break
-        return exprs
+    #     def rval_lst(self) -> List[ASTNode] | None:
+    #         """R-value list
+    #         Regras:
+    #             rval_lst -> rval [, rval_lst]'
+    #             rval -> expr { id=deque()); print(id+'=') }
+    #         """
+    #         exprs = []
+    #         if self.queue_empty():
+    #             # Standalone expression
+    #             while self._lookahead.tag == Tags.NUM or self._lookahead in ("+", "-"):
+    #                 exprs.append(self.opers())
+    #                 if self._lookahead == ",":
+    #                     self.match(Tag(","))
+    #                 else:
+    #                     return exprs
+    #             return None if not exprs else exprs
+    #
+    #         while True:
+    #             exprs.append(self.opers())
+    #             if self._lookahead == ",":
+    #                 self.match(Tag(","))
+    #             else:
+    #                 break
+    #         return exprs
 
     def queue_empty(self) -> bool:
         """Checks if the id_queue is empty."""
@@ -494,28 +550,6 @@ class Parser:
         """Clears the id_queue."""
         while not self.queue_empty():
             self.deque()
-
-    # def decls(self):
-    #     '''
-    #     Regras:
-    #         decls -> decl decls | ϵ
-    #         decl -> ID : tipo
-    #     '''
-    #     while self._lookahead.tag == TAG.TYPE:
-    #         type = str(self._lookahead)
-    #         if not self.match(TAG.TYPE):
-    #             raise SyntaxError(f"Erro sintático [{self._lexer.filename}:{self._lexer.column}]:"
-    #                              " era esperado um tipo de variável.")
-    #
-    #     name = ''
-    #     ...
-    #     s = Symbol(type, name)
-    #     self._log("Declarado", s)
-    #
-    #     # insere a variável na tabela de símbolos
-    #     if not self._sym_table.insert(name, s):
-    #         self._log('Erro: a variável já foi declarada no escopo atual')
-    #         raise SemanticError()
 
     def opers(self):
         """Operations
@@ -676,6 +710,7 @@ class Parser:
         Regra: digit -> digit { print(digit) }
         """
 
+    # REFACTOR -> Remover
     #   modifier = 1
     #   if self._lookahead == "+":
     #       self.match(Tag("+"))
@@ -750,7 +785,7 @@ class Parser:
         else:
             # WATCH -> Melhorar mensagens de erro
             raise SyntaxError(
-                f"Erro Sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:\n"
+                f"[b][Erro Sintático] [{self._lexer.filename}[/b]:{self._lexer.line}:{self._lexer.column}]:\n"
                 f"\tEra esperado '{t.name}', mas o compilador encontrou '{self._lookahead.tag.name}'."
             )
 
@@ -776,7 +811,7 @@ def main(source_filename: str, options: int, *args, **kwargs):
             lexer,
             tui.log_ir,
             lambda message="", *args, **kwargs: tui.log_debug(
-                f"[yellow]Warning {message}[/yellow]", *args, **kwargs
+                f"[yellow][b][Warning][/b]  {message}[/yellow]", *args, **kwargs
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )

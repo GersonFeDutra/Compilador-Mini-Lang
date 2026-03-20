@@ -3,7 +3,8 @@
 var x : int = 5;;
 var resultado : int = 0;
 
-def calcular ( x : int) : int{ # OK -> Deve permitir sombreamento
+def calcular ( x : int) : int{
+    var x: int = resultado; # OK -> Não deve permitir sobrescrever parâmetro
     if ( x > 0) {
         return x * calcular ( x - 1) ;
     }

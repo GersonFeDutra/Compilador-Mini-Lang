@@ -48,7 +48,7 @@ def main(
             lexer,
             tui.log_ir,
             lambda message="", *args, **kwargs: tui.log_debug(
-                f"[yellow]Warning {message}[/yellow]", *args, **kwargs
+                f"[yellow][b][Warning][/b] {message}[/yellow]", *args, **kwargs
             ),
             optimize=not bool(options & Options.NO_OPTIMIZE),
         )

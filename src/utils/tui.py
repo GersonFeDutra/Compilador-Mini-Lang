@@ -15,6 +15,7 @@ import threading
 import time
 import sys
 import os
+
 try:
     import termios
     import tty
