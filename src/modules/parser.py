@@ -417,10 +417,13 @@ class Parser:
             <simple-expression> -> <term> { <additive-op> <term> }
             <term> -> <factor> { <multiplicative-op> <factor> }
         """
+        # TODO -> <simple-expression> -> <term> { <additive-op> <term> }
         left_node = self.additive()
 
         while True:
+            #  <relational-op>
             if self._lookahead in (">", "<", "==", "!=", "<=", ">="):
+                # <simple-expression> -> <term> { <additive-op> <term> }
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
                 right_node = self.additive()
@@ -442,7 +445,9 @@ class Parser:
         left_node = self.multiplicative()
 
         while True:
-            if self._lookahead in ("+", "-"):
+            if self._lookahead in ("+", "-", "or"):
+                # TODO
+                # FIXME -> Deve verificar tipos
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
                 right_node = self.multiplicative()
@@ -464,7 +469,9 @@ class Parser:
         left_node = self.factor()
 
         while True:
-            if self._lookahead in ("*", "/"):
+            if self._lookahead in ("*", "/", "and"):
+                # TODO
+                # FIXME -> Deve verificar tipos
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
                 right_node = self.factor()
