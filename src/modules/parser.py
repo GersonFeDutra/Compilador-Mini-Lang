@@ -4,13 +4,13 @@ import json
 from typing import Callable
 from queue import SimpleQueue as Queue
 
-from .lexer import Lexer, Num, Token, Tag, Tags, Id, Type
+from .lexer import Integer, Real, Str, Lexer, Token, Tag, Tags, Id, Type
 from .symbols import Symbol, SymTable
 from ..utils.istream import InputStream, TuiInputStream
 from ..utils.options import *
 from ..utils.tui import Tui
-from ..utils.utils import EXIT_ERROR, log, log_error
-from ..utils.utils import log_warning
+from ..utils.utils import EXIT_ERROR, log, log_error, log_warning
+from ..utils.utils import RICH_COLOR_ORANGE as RTC_ORANGE
 from ..modules.ast import (
     Program,
     Block,
@@ -28,6 +28,7 @@ from ..modules.ast import (
     FormalParam,
     FunctionCall,
     FunctionDecl,
+    UnaryOp,
 )
 from typing import List
 from pprint import pformat
@@ -100,7 +101,8 @@ class Parser:
         """Regra: var <id> : <type> = <expr> ;"""
         self.match(Tags.VAR)
 
-        name = str(self._lookahead)
+        var_token = self._lookahead
+        name = str(var_token)
         self.match(Tags.ID)
         self.match(Tag(":"))
 
@@ -116,19 +118,20 @@ class Parser:
         if expr_type != "unknown" and var_type != expr_type:
             if not (var_type == "real" and expr_type == "int"):
                 raise SemanticError(
-                    f"[b][Erro Semântico] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
+                    f"[b][Erro Semântico] [{self._lexer.filename}:{var_token.coords}]:[/b] "
                     f"A variável '[cyan]{name}[/cyan]' foi declarada como "
                     f"'[purple]{var_type}[/purple]', mas recebeu um valor do tipo "
                     f"'[purple]{expr_type}[/purple]'."
                 )
 
         # Salvar tabelas de símbolos
-        if not self._sym_table.insert(name, Symbol(name, var_type, self._lexer.coords)):
+        assert var_token.coords is not None
+        if not self._sym_table.insert(name, Symbol(name, var_type, var_token.coords)):
             dupl: Symbol = self._sym_table.find(
                 name
             )  # pyright: ignore[reportAssignmentType]
             raise SemanticError(
-                f"[b][Erro semântico] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
+                f"[b][Erro semântico] [{self._lexer.filename}:{var_token.coords}]:[/b] "
                 f"variável '[cyan]{name}[/cyan]' já declarada em [{dupl.coords}]."
             )
         return VarDecl(name=name, var_type=var_type, value=expr_node)
@@ -141,6 +144,7 @@ class Parser:
         self.match(Tags.ID)
         self.match(Tag("="))
 
+        expr_token_coords = self._lookahead.coords
         expr_node = self.expression()
         self.match(Tag(";"))
 
@@ -150,7 +154,7 @@ class Parser:
             if expr_type != "unknown" and sym.type != expr_type:
                 if not (sym.type == "real" and expr_type == "int"):
                     raise SemanticError(
-                        f"[b][Erro semântico] [{self._lexer.filename}:{self._lexer.line}{self._lexer.column}]:[/b] "
+                        f"[b][Erro semântico] [{self._lexer.filename}:{expr_token_coords}]:[/b] "
                         f"A variável '[cyan]{name}[/cyan]' é do tipo '[purple]{sym.type}[/purple]', "
                         f"mas está a receber um valor do tipo '[purple]{expr_type}[/purple]'."
                     )
@@ -230,6 +234,8 @@ class Parser:
         if self._lookahead.tag == Tags.ID:
             # <formal-params> → <formal-param> { "," <formal-param> }
             while True:
+                p_token_coords = self._lookahead.coords
+                assert p_token_coords is not None
                 p_name = str(self._lookahead)  # ação semântica
                 self.match(Tags.ID)
                 self.match(Tag(":"))
@@ -241,14 +247,14 @@ class Parser:
 
                 # ação semântica:
                 if not self._sym_table.insert(
-                    p_name, Symbol(p_name, p_type, self._lexer.coords)
+                    p_name, Symbol(p_name, p_type, p_token_coords)
                 ):
                     dupl: Symbol = self._sym_table.find(
                         p_name
                     )  # pyright: ignore[reportAssignmentType]
                     raise SyntaxError(
-                        f"[b][Erro de sintaxe] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
-                        f"o parâmetro '[cyan]{p_name}[/cyan]' já existe em [{dupl.coords.line}:{dupl.coords.column}]."
+                        f"[b][Erro de sintaxe] [{self._lexer.filename}:{p_token_coords}]:[/b] "
+                        f"o parâmetro '[cyan]{p_name}[/cyan]' já existe em [{dupl.coords}]."
                     )
                 if self._sym_table.is_shadowing(p_name):
                     shadow: Symbol = saved_table.find(
@@ -371,7 +377,7 @@ class Parser:
 
         if self._lookahead != "}":
             raise SyntaxError(
-                f"[b][Erro sintático] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:[/b] "
+                f"[b][Erro sintático] [{self._lexer.filename}:{self._lookahead.coords}]:[/b] "
                 "era esperado '}' no final do bloco."
             )
         self.match(Tag("}"))
@@ -384,45 +390,6 @@ class Parser:
             # del # Símbolos no escopo do bloco acessado ja não são mais necessários
 
         return Block(statements=block_stmts)
-
-    def lval_lst(self) -> bool:
-        """Left-value list
-        Regras:
-            lval_lst -> lval [, lval_lst]'
-            lval -> ID { push(Id(<lookahead>)) }
-        """
-        ret = self._lookahead.tag == Tags.ID
-        while ret:
-            assert isinstance(self._lookahead, Id)
-            # lval -> ID { push(ID(<lookahead>)) }
-            id = self._lookahead
-            self.match(Tags.ID)
-            self.queue(id)  # ação semântica: empilha o Id
-
-            # REFACTOR -> Clear
-            # raise SyntaxError(f'Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:'
-            #                  ' era esperado um identificador de variável,'
-            #                  f'foi passado {self._lookahead.tag.name} ao invés disso.')
-
-            # if not self.match(TAG.ID):
-            #     raise SyntaxError(f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
-            #                      " era esperado um identificador de variável.")
-
-            # verifica se a variável foi declarada
-            # symbol = self.find(name)
-            # if symbol is None:
-            #     raise SyntaxError(f"Erro sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]:"
-            #                      f" a variável '{name}' não foi declarada.")
-            # self._log(f'{name}', end='', flush=True)  # ação semântica
-
-            # lval_lst -> lval , lval_lst
-            if self._lookahead == ",":
-                self.match(Tag(","))
-            else:
-                break
-            ret = self._lookahead.tag == Tags.ID
-        # Not a left-value
-        return ret
 
     def queue_empty(self) -> bool:
         """Checks if the id_queue is empty."""
@@ -508,50 +475,60 @@ class Parser:
                 return left_node
 
     def factor(self) -> ASTNode:
+        """Factor
+        Regras:
+            <factor> -> <literal> | <identifier> | <function-call> | <sub-expression>
+            <literal> -> <integer-literal> | <real-literal> | “true” | "false”
+            <integer-literal> -> [0-9]+
+        """
 
-        modifier = 1
-        if self._lookahead == "+":
-            self.match(Tag("+"))
-        elif self._lookahead == "-":
-            self.match(Tag("-"))
-            modifier = -1
+        if str(self._lookahead) in ("+", "-", "not"):
+            unary = str(self._lookahead)
+            self.match(Tag(str(self._lookahead)))
+            return UnaryOp(op=unary, expr=self.factor())
 
-        if self._lookahead.tag == Tags.NUM:
-            val = self._lookahead.value * modifier
-            self.match(Tags.NUM)
-            return Literal(value=val)
-
-        elif self._lookahead.tag == Tags.TRUE:
-            self.match(Tags.TRUE)
-            return Literal(value=True)
-        elif self._lookahead.tag == Tags.FALSE:
-            self.match(Tags.FALSE)
-            return Literal(value=False)
-
-        # É uma String (texto entre aspas)?
-        elif self._lookahead.tag == Tags.STR_LIT:
-            val = self._lookahead.value
-            self.match(Tags.STR_LIT)
-            return Literal(value=val)
-
-        elif self._lookahead.tag == "(":
-            self.match(Tag("("))
-            expr_node = self.expression()
-            self.match(Tag(")"))
-            return expr_node
+        match self._lookahead.tag:
+            case Tags.INT:
+                assert isinstance(self._lookahead, Integer)
+                val = self._lookahead.value
+                self.match(Tags.INT)
+                return Literal(value=val)
+            case Tags.REAL:
+                assert isinstance(self._lookahead, Real)
+                val = self._lookahead.value
+                self.match(Tags.REAL)
+                return Literal(value=val)
+            case Tags.TRUE:
+                self.match(Tags.TRUE)
+                return Literal(value=True)
+            case Tags.FALSE:
+                self.match(Tags.FALSE)
+                return Literal(value=False)
+            case Tags.STR_LIT:
+                assert isinstance(self._lookahead, Str)
+                val = self._lookahead.value
+                self.match(Tags.STR_LIT)
+                return Literal(value=val)
+            case _:
+                if self._lookahead.tag == "(":
+                    self.match(Tag("("))
+                    expr_node = self.expression()
+                    self.match(Tag(")"))
+                    return expr_node
 
         # É uma Variável sendo usada na conta (Identificador)?
-        elif self._lookahead.tag == Tags.ID:
+        if self._lookahead.tag == Tags.ID:
+            id_token_coords = self._lookahead.coords
             name = str(self._lookahead)
             self.match(Tags.ID)
 
             sym = self._sym_table.find(name)
             if self._sym_table.find(name) is None:
                 raise SemanticError(
-                    f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                    f"[Erro Semântico] [{self._lexer.filename}:{id_token_coords}]: "
                     f"A variável '{name}' não foi encontrada."
                 )
-
+            assert sym is not None
             if self._lookahead == "(":
                 self.match(Tag("("))
                 args = []
@@ -562,16 +539,18 @@ class Parser:
                             self.match(Tag(","))
                         else:
                             break
+                closing_token_coords = self._lookahead.coords
                 self.match(Tag(")"))
 
                 if sym.type == "function":  # and sym.params_count != -1:
                     if len(args) != len(sym.params):
                         raise SyntaxError(
-                            f"Erro Sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                            f"[Erro Sintático] [{self._lexer.filename}:{closing_token_coords}]: "
                             f"A função '[cyan]{name}[/cyan]' exige {len(sym.params)} "
                             f"argumento{'s' if len(sym.params) > 1 else ''} "
                             # WARNING -> Verificar se `to_code` é seguro de ser usado aqui!
-                            f"[purple]{sym.params}[/purple], mas recebeu {len(args)} [purple]{[arg.to_code() for arg in args]}[/purple]."
+                            f"[purple]{sym.params}[/purple], mas foi chamada com {len(args)} "
+                            f"[purple]{[arg.to_code() for arg in args]}[/purple]."
                         )
                     for i, arg_node in enumerate(args):
                         arg_type = self._infer_type(arg_node)
@@ -579,11 +558,13 @@ class Parser:
                         expected_type = param_symbol.type
                         param_name = param_symbol.var
 
+                        # TODO -> Tipo desconhecido deve ser tratado
                         if arg_type != "unknown" and arg_type != expected_type:
                             raise SemanticError(
-                                f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
-                                f"O {i+1}° parâmetro '[orange]{param_name}[/orange]' da função '[cyan]{name}[/cyan]' "
-                                f"esperava [purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
+                                f"[Erro Semântico] [{self._lexer.filename}:{closing_token_coords}]: "
+                                f"O {i+1}° parâmetro '[orange]{param_name}[/orange]' da função "
+                                f"'[cyan]{name}[/cyan]' em [{param_symbol.coords}] esperava "
+                                f"[purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
                             )
                 return FunctionCall(name=name, args=args)
 
@@ -591,8 +572,11 @@ class Parser:
 
         else:
             raise SyntaxError(
-                f"Erro Sintático [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
-                "Esperado um valor, variável, booleano, string ou '('."
+                f"[b][Erro Sintático] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
+                f"Esperado um fator ([{RTC_ORANGE}]sub-expressão[/{RTC_ORANGE}] entre parênteses, "
+                f"[{RTC_ORANGE}]literal[/{RTC_ORANGE}], [{RTC_ORANGE}]identificador[/{RTC_ORANGE}], "
+                f"ou [{RTC_ORANGE}]chamada de função[/{RTC_ORANGE}], "
+                f"mas recebeu '[purple]{self._lookahead}[/purple]' ao invés disso."
             )
 
         # def digit(self) -> Literal:
@@ -634,7 +618,7 @@ class Parser:
                 # ------#
                 else:
                     raise SemanticError(
-                        f"Erro Semântico [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
+                        f"[Erro Semântico] [{self._lexer.filename}:{self._lexer.line}:{self._lexer.column}]: "
                         f"Tipos incompatíveis na operação."
                         f"Tentativa de combinar [purple]{left_type}[/purple] com [purple]{right_type}[/purple]."
                     )
@@ -645,6 +629,8 @@ class Parser:
 
         elif isinstance(node, FunctionCall):
             return "int"
+
+        # FIXME -> Tratar tipo desconhecido
         return "unknown"
 
     def match(self, t: Tag):
@@ -654,7 +640,7 @@ class Parser:
         else:
             # WATCH -> Melhorar mensagens de erro
             raise SyntaxError(
-                f"[b][Erro Sintático] [{self._lexer.filename}[/b]:{self._lexer.line}:{self._lexer.column}]:\n"
+                f"[b][Erro Sintático] [{self._lexer.filename}[/b]:{self._lookahead.coords}]:\n"
                 f"\tEra esperado '{t.name}', mas o compilador encontrou '{self._lookahead.tag.name}'."
             )
 

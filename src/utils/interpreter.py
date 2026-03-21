@@ -6,15 +6,15 @@ Usage: python ./compiler.py <source_file> [<output_file>] [-?] [-!] [-no] [--deb
     @option [-no|--no-optimize] don't use accumulator
 """
 
-from io import StringIO, TextIOWrapper
 import sys
+from io import StringIO, TextIOWrapper
 from functools import partial
 
 from ..utils.arg_parser import ArgParser
 from ..utils.istream import InputStream, TuiInputStream
 from ..utils.options import Options
 from ..utils.tui import Tui
-from ..utils.utils import EXIT_ERROR, log, log_error
+from ..utils.utils import EXIT_ERROR, log_error
 from ..modules.gen import CodeGenerator
 from ..modules.lexer import Lexer
 from ..modules.parser import Parser
@@ -124,7 +124,6 @@ def main(
                     exec(code_string)  # pyright: ignore[reportPossiblyUnboundVariable]
                 tui.log_execution(stdout_capture.getvalue(), end="")
                 tui.log_execution(stderr_capture.getvalue(), end="\n")
-                exit(EXIT_SUCCESS)
 
             tui.run(
                 run_interpreter2,
@@ -133,6 +132,7 @@ def main(
                     options & Options.NO_EXCEPT_TREATMENT
                 ),  # pyright: ignore[reportCallIssue]
             )
+            return None
     else:
         istream: InputStream
         try:
@@ -199,7 +199,6 @@ def main(
 
 
 if __name__ == "__main__":
-    from ..utils.utils import log_error, EXIT_ERROR
     from ..modules import gen
     from ..modules import parser as ml_parser
 

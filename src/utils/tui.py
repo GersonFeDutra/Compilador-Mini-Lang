@@ -586,12 +586,12 @@ if __name__ == "__main__":
 
         tokens = [
             "<TYPE, int> <ID, main> <'('> <')'> <'{'>",
-            "<TYPE, int> <ID, x> <'='> <NUM, 5> <';'>",
-            "<TYPE, int> <ID, y> <'='> <ID, x> <'*'> <NUM, 2> <';'>",
-            "<TYPE, float> <ID, z> <'='> <NUM, 3> <'.'> <NUM, 14> <';'>",
-            "<'if'> <'('> <ID, y> <'>'> <NUM, 10> <')'> <'{'>",
-            "<'return'> <NUM, 1> <';'>",
-            "<'}'>," "<'return'> <NUM, 0> <';'>",
+            "<TYPE, int> <ID, x> <'='> <INT, 5> <';'>",
+            "<TYPE, int> <ID, y> <'='> <ID, x> <'*'> <INT, 2> <';'>",
+            "<TYPE, float> <ID, z> <'='> <INT, 3> <'.'> <INT, 14> <';'>",
+            "<'if'> <'('> <ID, y> <'>'> <INT, 10> <')'> <'{'>",
+            "<'return'> <INT, 1> <';'>",
+            "<'}'>," "<'return'> <INT, 0> <';'>",
             "<'}'>",
         ]
 

@@ -60,9 +60,7 @@ class UnaryOp(ASTNode):
     expr: ASTNode
 
     def to_code(self) -> str:
-        if self.op == "!":
-            return f"(not {_to_code(self.expr)})"
-        return f"({self.op}{_to_code(self.expr)})"
+        return f"({self.op}({_to_code(self.expr)}))"
 
     def to_dict(self):
         return {

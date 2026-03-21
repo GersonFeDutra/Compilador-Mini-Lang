@@ -8,6 +8,8 @@ console = Console()
 EXIT_SUCCESS: int = 0
 EXIT_ERROR: int = 1
 
+RICH_COLOR_ORANGE = "color(208)"
+
 
 def log(*args, end: str | None = "\n", file=sys.stderr, **kwargs):
     """Prints log messages to stderr."""

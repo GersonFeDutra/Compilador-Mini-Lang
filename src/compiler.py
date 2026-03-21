@@ -14,7 +14,7 @@ from enum import IntEnum
 from .utils.arg_parser import ArgParser
 
 from .utils.options import *
-from .utils.utils import log_error, EXIT_SUCCESS, EXIT_ERROR
+from .utils.utils import log_error, EXIT_SUCCESS
 
 
 class StopOn(IntEnum):

@@ -40,11 +40,7 @@ class Tag:
 
 
 class Tags:
-    ...
-    # TODO -> Split num and real
-    NUM = Tag(256, "NUM")
-    # INT = Tag(263, 'INT')
-    # REAL = Tag(264, 'REAL')
+    # NUM = Tag(256, "NUM")
     ID = Tag(257, "ID")
     TYPE = Tag(258, "TYPE")
     TRUE = Tag(259, "TRUE")  # apenas para ilustrar
@@ -58,14 +54,16 @@ class Tags:
     WHILE = Tag(267, "while")
     DEF = Tag(268, "def")
     RETURN = Tag(269, "return")
-
-    # WATCH
-    # CHAR = Tag(261, 'CHAR')
-    # PTR = Tag(265, 'PTR')
+    INT = Tag(270, "INT")
+    REAL = Tag(271, "REAL")
+    AND = Tag(272, "and")
+    OR = Tag(273, "or")
+    NOT = Tag(274, "not")
 
 
 class Token:
-    def __init__(self, tag: Tag | str | int):
+    def __init__(self, tag: Tag | str | int, coords: Coords | None = None):
+        self.coords = coords
         if isinstance(tag, int):
             self.tag = Tag(tag, chr(tag) if 32 <= tag <= 126 else f"TAG_{tag}")
         elif isinstance(tag, str):
@@ -94,8 +92,8 @@ class Token:
 class Id(Token):
     name: str
 
-    def __init__(self, name: str):
-        super().__init__(Tags.ID)
+    def __init__(self, name: str, coords: Coords | None = None):
+        super().__init__(Tags.ID, coords)
         self.name = name
 
     def __str__(self) -> str:
@@ -103,23 +101,29 @@ class Id(Token):
 
 
 class Type(Token):
-    def __init__(self, name: str):
-        super().__init__(Tags.TYPE)
+    def __init__(self, name: str, coords: Coords | None = None):
+        super().__init__(Tags.TYPE, coords)
         self.name = name
 
     def __str__(self) -> str:
         return self.name
 
 
-class Num(Token):
-    def __init__(self, value: int | float):
-        super().__init__(Tags.NUM)
+class Integer(Token):
+    def __init__(self, value: int, coords: Coords | None = None):
+        super().__init__(Tags.INT, coords)
+        self.value = value
+
+
+class Real(Token):
+    def __init__(self, value: float, coords: Coords | None = None):
+        super().__init__(Tags.REAL, coords)
         self.value = value
 
 
 class Str(Token):
-    def __init__(self, value: str):
-        super().__init__(Tags.STR_LIT)
+    def __init__(self, value: str, coords: Coords | None = None):
+        super().__init__(Tags.STR_LIT, coords)
         self.value = value
 
     def __str__(self) -> str:
@@ -127,7 +131,7 @@ class Str(Token):
 
 
 class Lexer:
-    _id_table: dict[str, "Token | Id | Type"] = {}
+    _keyword_table: dict[str, "Token | Id | Type"] = {}
     line = property(
         lambda self: self._cached_line,
         None,
@@ -140,6 +144,7 @@ class Lexer:
         None,
         "Cached column number from witch line is being parsed.",
     )
+    # REFACTOR -> No need to interface this here in the future.
     coords = property(
         lambda self: Coords(self._cached_line, self._cached_column),
         None,
@@ -182,23 +187,20 @@ class Lexer:
         BLOCK = 2
 
     def _init_id_table(self):
-        self._id_table = {
+        self._keyword_table = {
+            "int": Type("int"),
+            "real": Type("real"),
+            "bool": Type("bool"),
+            "str": Type("str"),
+            "void": Type("void"),  # for functions
+            # Literais
             "true": Token(Tags.TRUE),
             "false": Token(Tags.FALSE),
-            "int": Type("int"),  # 32 bits
-            "float": Type("float"),  # 32 bits
-            "real": Type("real"),
-            "double": Type("double"),  # 64 bits
-            "bool": Type("bool"),
-            "char": Type("char"),
-            "str": Type("str"),
-            "i8": Type("i8"),
-            "i16": Type("i16"),
-            "u16": Type("u16"),
-            "u32": Type("u32"),
-            "i64": Type("i64"),
-            "u64": Type("u64"),
-            "void": Type("void"),  # for pointers and functions
+            # Operadores
+            "and": Token(Tags.AND),
+            "or": Token(Tags.OR),
+            "not": Token(Tags.NOT),
+            # Outras palavras-chave
             "var": Token(Tags.VAR),
             "set": Token(Tags.SET),
             "print": Token(Tags.PRINT),
@@ -272,7 +274,7 @@ class Lexer:
             return char
         return ""  # Fim da entrada
 
-    def scan(self) -> Token | Id | Type | Num:
+    def scan(self) -> Token | Id | Type | Integer | Real | Str:
         """Implementação do método de varredura (scan) do lexer."""
         while True:
             # region 0. Line continuation
@@ -322,6 +324,8 @@ class Lexer:
             # endregion
 
             self._cached_column = self._column
+            # Future Token initial coordinates
+            coords = Coords(self._line, self._column)
 
             # region 2. Trata números
             if self._peek.isdigit():
@@ -332,10 +336,10 @@ class Lexer:
                     self._peek = self._get_next_char()
 
                 if self._peek != ".":
-                    num = int(num_str)
-                    self._log(f"<NUM, {num}> ", end="")
+                    value = int(num_str)
+                    self._log(f"<INT, {value}> ", end="")
                     self._logged_token |= Lexer.LoggedToken.EXPRESSION
-                    return Num(num)
+                    return Integer(value, coords)
                 # endregion
                 else:
                     # region Ponto Flutuante
@@ -346,12 +350,12 @@ class Lexer:
                         self._peek = self._get_next_char()
 
                     num_float = float(num_str)
-                    self._log(f"<NUM, {num_float}> ", end="")
+                    self._log(f"<REAL, {num_float}> ", end="")
                     self._logged_token |= Lexer.LoggedToken.EXPRESSION
-                    return Num(num_float)
+                    return Real(num_float, coords)
                     # endregion
             # endregion
-            # region 2.5 Trata Strings
+            # region 2.5 Trata strings literais
             if self._peek == '"':
                 str_val = ""
                 self._peek = self._get_next_char()  # aspa inicial
@@ -364,7 +368,7 @@ class Lexer:
 
                 self._log(f'<STR_LIT, "{str_val}">', end="")
                 self._logged_token |= Lexer.LoggedToken.EXPRESSION
-                return Str(str_val)
+                return Str(str_val, coords)
             # endregion
 
             # TODO -> Tratar identificadores genéricos de forma diferente de palavras-reservadas
@@ -375,26 +379,32 @@ class Lexer:
                     id_str += self._peek
                     self._peek = self._get_next_char()
 
-                if id_str in self._id_table:
+                if id_str in self._keyword_table:
                     # para debugging
-                    token_found: Token | Type | Id = self._id_table[id_str]
-                    if isinstance(token_found, Type) or isinstance(token_found, Id):
-                        # self._log(f'<{id_str}> ', end='')
+                    token_found: Token | Type | Id = self._keyword_table[id_str]
+                    self._logged_token |= Lexer.LoggedToken.EXPRESSION
+
+                    if isinstance(token_found, Type):
                         self._log(
                             f"<{token_found.tag.name}, {token_found.name}> ", end=""
                         )
+                        return Type(token_found.name, coords)
+                    elif isinstance(token_found, Id):
+                        self._log(
+                            f"<{token_found.tag.name}, {token_found.name}> ", end=""
+                        )
+                        return Id(token_found.name, coords)
                     else:
                         self._log(f"<{token_found.tag.name}> ", end="")
-                    self._logged_token |= Lexer.LoggedToken.EXPRESSION
-                    return token_found
+                        return Token(token_found.tag, coords)
 
                 # se o identificador não estiver na tabela, cria um novo
                 else:
                     new_id = Id(id_str)
-                    self._id_table[id_str] = new_id
+                    self._keyword_table[id_str] = new_id
                     self._log(f"<{new_id.tag}, {new_id.name}> ", end="")
                     self._logged_token |= Lexer.LoggedToken.EXPRESSION
-                    return new_id
+                    return Id(id_str, coords)
             # endregion
 
             # region 5. Trata operadores
@@ -406,7 +416,7 @@ class Lexer:
                 op_str += "="
                 self._peek = self._get_next_char()
 
-            t_oper = Token(op_str)  # pyright: ignore[reportArgumentType]
+            t_oper = Token(op_str, coords)  # pyright: ignore[reportArgumentType]
 
             if t_oper.tag.name == "":
                 return t_oper  # EOF
