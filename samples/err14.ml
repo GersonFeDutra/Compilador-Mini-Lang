@@ -8,5 +8,5 @@ def soma (a:int, b : bool) : int {
 }
 
 // -3 + +5.0
-var z: real = (soma(-x, +y) < 4) + 1; // OK -> Erro: combinando tipos diferentes
+var z: real = (soma(-x, +y) < 4) + 1; // OK -> Erro: combinando tipos incompatíveis
 print z;

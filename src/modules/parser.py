@@ -621,7 +621,7 @@ class Parser:
 
                             if not allowed:
                                 raise SemanticError(
-                                    f"[Erro Semântico] [{self._lexer.filename}:{closing_token_coords}]: "
+                                    f"[b][Erro Semântico] [{self._lexer.filename}:{closing_token_coords}][/b]: "
                                     f"O {i+1}° parâmetro '[orange]{param_name}[/orange]' da função "
                                     f"'[cyan]{name}[/cyan]' em [{param_symbol.coords}] esperava "
                                     f"[purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."

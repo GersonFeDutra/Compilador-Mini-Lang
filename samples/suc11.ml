@@ -10,6 +10,5 @@ def soma (a:int, b : real) : int {
 }
 
 // -3 + +5.0
-// FIXME deve suportar truncamento
-var z: bool = (soma(-x, +y) < 4) < 1; // OK -> Deve suportar chamada com de função com conversão de tipo.
+var z: bool = (soma(-x, +y) < 4) < 1; // OK -> Deve suportar chamada com de função com conversão de tipo (truncamento1).
 print z;
