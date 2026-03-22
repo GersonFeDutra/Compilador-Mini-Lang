@@ -116,7 +116,9 @@ class Parser:
 
         # Verificação de tipos na declaração
         expr_type = self._infer_type(expr_node)
-        self._check_type_compatibility(var_type, expr_type, var_token.coords, name)
+        expr_node = self._check_type_compatibility(
+            var_type, expr_type, var_token.coords, name, expr_node
+        )
         if expr_type != "unknown" and var_type != expr_type:
             if var_type == "int" and expr_type == "real":
                 self._warn(
@@ -133,7 +135,7 @@ class Parser:
                 name
             )  # pyright: ignore[reportAssignmentType]
             raise SyntaxError(
-                f"[b][Erro sintático] [{self._lexer.filename}:{var_token.coords}]:[/b] "
+                f"[b][Erro Sintático] [{self._lexer.filename}:{var_token.coords}]:[/b] "
                 f"variável '[cyan]{name}[/cyan]' já declarada em [{dupl.coords}]."
             )
 
@@ -167,7 +169,9 @@ class Parser:
         sym = self._sym_table.find(name)
         if sym:
             expr_type = self._infer_type(expr_node)
-            self._check_type_compatibility(sym.type, expr_type, expr_token_coords, name)
+            expr_node = self._check_type_compatibility(
+                sym.type, expr_type, expr_token_coords, name, expr_node
+            )
             if expr_type != "unknown" and sym.type != expr_type:
                 if sym.type == "int" and expr_type == "real":
                     self._warn(
@@ -305,6 +309,7 @@ class Parser:
         ]
         def_sym = Symbol(name, "function", self._lexer.coords, param_symbols)
 
+        def_sym.return_type = ret_type
         # 5. Insere a função na tabela em seu próprio escopo (permite recursão)
         self._sym_table.insert(name, def_sym)
 
@@ -591,9 +596,9 @@ class Parser:
                             f"[purple]{[arg.to_code() for arg in args]}[/purple]."
                         )
                     for i, arg_node in enumerate(args):
-                        arg_type = self._infer_type(arg_node)
+                        arg_type = str(self._infer_type(arg_node)).strip()
                         param_symbol = sym.params[i]
-                        expected_type = param_symbol.type
+                        expected_type = str(param_symbol.type).strip()
                         param_name = param_symbol.var
 
                         # TODO -> Tipo desconhecido deve ser tratado
@@ -603,12 +608,16 @@ class Parser:
                                 allowed = True
                             elif expected_type == "int" and arg_type == "real":
                                 allowed = True
+                                args[i] = FunctionCall(name="int", args=[arg_node])
                             elif expected_type == "real" and arg_type == "int":
                                 allowed = True
+                                args[i] = FunctionCall(name="float", args=[arg_node])
                             elif expected_type == "int" and arg_type == "bool":
                                 allowed = True
+                                args[i] = FunctionCall(name="int", args=[arg_node])
                             elif expected_type == "bool" and arg_type == "int":
                                 allowed = True
+                                args[i] = FunctionCall(name="bool", args=[arg_node])
 
                             if not allowed:
                                 raise SemanticError(
@@ -661,7 +670,9 @@ class Parser:
             expr_type = self._infer_type(node.expr)
             if node.op == "not" and expr_type not in ("bool", "int", "unknown"):
                 raise SemanticError(
-                    f"[Erro Semântico]: Operador 'not' requer 'bool' ou 'int', recebeu '{expr_type}'. "
+                    f"[Erro Semântico]: Operador [cyan]not[/cyan] requer "
+                    "'[cyan]bool[/cyan]' ou [cyan]int[/cyan], recebeu "
+                    f"'[cyan]{expr_type}[/cyan]'. "
                 )
             if node.op in ("+", "-") and expr_type not in (
                 "int",
@@ -669,8 +680,9 @@ class Parser:
                 "bool",
                 "unknown",
             ):
-                raise (
-                    f"[Erro Semântico]: Operador '{node.op}'numérico não suporta o tipo '{expr_type}'."
+                raise SemanticError(
+                    f"[Erro Semântico]: Operador '[cyan]{node.op}[/cyan]' numérico "
+                    f"não suporta o tipo '[purple]{expr_type}[/purple]'."
                 )
             return "bool" if node.op == "not" else expr_type
 
@@ -715,7 +727,7 @@ class Parser:
 
         elif isinstance(node, FunctionCall):
             sym = self._sym_table.find(node.name)
-            return sym.type if sym else "unknown"
+            return getattr(sym, "return_type", "unknown") if sym else "unknown"
 
         # FIXME -> Tratar tipo desconhecido
         return "unknown"
@@ -734,30 +746,37 @@ class Parser:
     """Truncamento, Contagem, Veracidade"""
 
     def _check_type_compatibility(
-        self, target_type: str, expr_type: str, coords, name: str
-    ):
+        self, target_type: str, expr_type: str, coords, name: str, expr_node: ASTNode
+    ) -> ASTNode:
         if expr_type == "unknown" or target_type == "unknown":
-            return
+            return expr_node
         if target_type == expr_type:
-            return
+            return expr_node
 
         allowed = False
+        new_node = expr_node
+
         if target_type == "int" and expr_type == "real":
             allowed = True
+            new_node = FunctionCall(name="int", args=[expr_node])
         elif target_type == "real" and expr_type == "int":
             allowed = True
+            new_node = FunctionCall(name="float", args=[expr_node])
         elif target_type == "int" and expr_type == "bool":
             allowed = True
+            new_node = FunctionCall(name="int", args=[expr_node])
         elif target_type == "bool" and expr_type == "int":
             allowed = True
+            new_node = FunctionCall(name="bool", args=[expr_node])
 
         if not allowed:
             raise SemanticError(
                 f"[b][Erro Semântico] [{self._lexer.filename}:{coords}]: [/b] "
-                f"Tipo incompatível. A variável '[cyan]{name}[/cyan]' é  de tipo "
+                f"Tipo incompatível. A variável '[cyan]{name}[/cyan]' é de tipo "
                 f"'[purple]{target_type}[/purple]', mas recebeu um valor "
                 f"'[purple]{expr_type}[/purple]'."
             )
+        return new_node
 
 
 def main(source_filename: str, options: int, *args, **kwargs):
