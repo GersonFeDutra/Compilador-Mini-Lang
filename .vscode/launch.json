@@ -192,6 +192,8 @@
                 "./samples/err15.ml",
                 "./samples/err16.ml",
                 "./samples/err17.ml",
+                "./samples/err18.ml",
+                "./samples/err19.ml",
                 "./samples/suc1.ml",
                 "./samples/suc2.ml",
                 "./samples/suc3.ml",

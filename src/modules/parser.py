@@ -132,8 +132,8 @@ class Parser:
             dupl: Symbol = self._sym_table.find(
                 name
             )  # pyright: ignore[reportAssignmentType]
-            raise SemanticError(
-                f"[b][Erro semântico] [{self._lexer.filename}:{var_token.coords}]:[/b] "
+            raise SyntaxError(
+                f"[b][Erro sintático] [{self._lexer.filename}:{var_token.coords}]:[/b] "
                 f"variável '[cyan]{name}[/cyan]' já declarada em [{dupl.coords}]."
             )
 
@@ -155,6 +155,7 @@ class Parser:
         """Regra: set <id> = <expr> ;"""
         self.match(Tags.SET)
 
+        var_coords = self._lookahead.coords
         name = str(self._lookahead)
         self.match(Tags.ID)
         self.match(Tag("="))
@@ -175,6 +176,11 @@ class Parser:
                         f"'[cyan]{name}[/cyan]' de tipo '[purple]{sym.type}[/purple]', "
                         f"mas está a receber um valor do tipo '[purple]{expr_type}[/purple]'."
                     )
+        else:
+            raise SyntaxError(
+                f"[b][Erro sintático] [{self._lexer.filename}:{var_coords}]:[/b] "
+                f"Variável '[cyan]{name}[/cyan]' não declarada."
+            )
 
         return Assignment(
             name=name, value=expr_node, var_type=sym.type if sym else "undefined"
@@ -431,22 +437,13 @@ class Parser:
         """Expression
         Regras:
             <expression> -> <simple-expression> { <relational-op> <simple-expression> }
-            <simple-expression> -> <term> { <additive-op> <term> }
-            <term> -> <factor> { <multiplicative-op> <factor> }
         """
-
-        """
-        Regras:
-            <expression> -> <simple-expression> { <relational-op> <simple-expression> }
-            <relational-op> -> "<" | ">" | "==" | "!=" | "<=" | ">="
-        """
-        # TODO -> <simple-expression> -> <term> { <additive-op> <term> }
         left_node = self.simple_expression()
 
         while True:
             #  <relational-op>
             if self._lookahead in (">", "<", "==", "!=", "<=", ">="):
-                # <simple-expression> -> <term> { <additive-op> <term> }
+                # { <relational-op> <simple-expression> }
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
                 right_node = self.simple_expression()
@@ -460,17 +457,18 @@ class Parser:
         """
         Regras:
             <simple-expression> -> <term> { <additive-op> <term> }
+            <term> -> <factor> { <multiplicative-op> <factor> }
             <additive-op> -> "+" | "-" | "or"
         """
 
-        left_node = self.term()
+        left_node = self.term()  # <simple-expression> -> <term>
 
         while True:
-            if self._lookahead in ("+", "-", "or"):
-                # TODO
-                # FIXME -> Deve verificar tipos
+            if self._lookahead in ("+", "-", "or"):  # <additive-op>
+                # { <additive-op> <term> }
                 op_str = str(self._lookahead)
                 self.match(Tag(op_str))
+                # FIXME -> Deve verificar tipos
                 right_node = self.term()
                 left_node = BinOp(left=left_node, op=op_str, right=right_node)
                 self._infer_type(left_node)
@@ -503,15 +501,20 @@ class Parser:
     def factor(self) -> ASTNode:
         """Factor
         Regras:
-            <factor> -> <literal> | <identifier> | <function-call> | <sub-expression>
+            <factor> -> <literal> | <identifier> | <function-call> | <sub-expression> | <unary>
+            <sub-expression> = "(" <expression> ")"
+            <unary> = ( "+" | "-" | "not" ) { <expression> }
+            <function-call> = <identifier> "(" [ <actual-params>] ") "
+            <actual-params> = <expression> { "," <expression> }
             <literal> -> <integer-literal> | <real-literal> | “true” | "false”
             <integer-literal> -> [0-9]+
         """
 
-        if str(self._lookahead) in ("+", "-", "not"):
+        # <factor> -> <unary>
+        if str(self._lookahead) in ("+", "-", "not"):  # ( "+" | "-" | "not" )
             unary = str(self._lookahead)
             self.match(Tag(str(self._lookahead)))
-            return UnaryOp(op=unary, expr=self.factor())
+            return UnaryOp(op=unary, expr=self.expression())  # { <expression> }
 
         match self._lookahead.tag:
             case Tags.INT:
@@ -536,6 +539,7 @@ class Parser:
                 self.match(Tags.STR_LIT)
                 return Literal(value=val)
             case _:
+                # <factor> -> <sub-expression>
                 if self._lookahead.tag == "(":
                     self.match(Tag("("))
                     expr_node = self.expression()
@@ -544,22 +548,30 @@ class Parser:
 
         # É uma Variável sendo usada na conta (Identificador)?
         if self._lookahead.tag == Tags.ID:
+            # <factor> -> <identifier>
             id_token_coords = self._lookahead.coords
             name = str(self._lookahead)
             self.match(Tags.ID)
+            undeclared: bool = False
 
             sym = self._sym_table.find(name)
-            if self._sym_table.find(name) is None:
-                raise SemanticError(
-                    f"[Erro Semântico] [{self._lexer.filename}:{id_token_coords}]: "
-                    f"A função '{name}' não foi declarada."
-                )
-            assert sym is not None
+            if sym is None:
+                undeclared = True
             if self._lookahead == "(":
+                # <factor> -> <function-call>
+                # <function-call> = <identifier> "(" [ <actual-params>] ") "
                 self.match(Tag("("))
+                if undeclared:
+                    raise SyntaxError(
+                        f"[Erro Sintático] [{self._lexer.filename}:{id_token_coords}]: "
+                        f"A função '{name}' não foi declarada."
+                    )
+                assert sym is not None
+
                 args = []
                 if self._lookahead != ")":
                     while True:
+                        # <actual-params> = <expression> { "," <expression> }
                         args.append(self.expression())
                         if self._lookahead == ",":
                             self.match(Tag(","))
@@ -606,6 +618,11 @@ class Parser:
                                     f"[purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
                                 )
                 return FunctionCall(name=name, args=args)
+            elif undeclared:
+                raise SyntaxError(
+                    f"[b][Erro Sintático] [{self._lexer.filename}:{id_token_coords}]:[/b] "
+                    f"Identificador referencia uma variável '[cyan]{name}[/cyan]' não declarada."
+                )
 
             return Identifier(name=name)
 
