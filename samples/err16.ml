@@ -1,12 +1,6 @@
 // -*- mode: cpp -*-
-// vim: set filetype=c++:
-var x : int = 5;
-var y:int=3;
+// vim: set filetype=c++:5
+var x : bool = 0;
 
-def soma (a:int, b : real) : int {
-    return a + b;
-}
-
-// -3 + +5.0
-var z: real = (soma(-x, +y) < 4) + 1; // Erro: combinando tipos diferentes
-print z;
+set y = true; # OK Undeclared type on assignment
+print x;

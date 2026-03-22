@@ -1,4 +1,6 @@
 // -*- mode: cpp -*-
-// vim: set filetype=c++:
-var x : real = .0; # OK -> Deve suportar reais apenas no format [0-9]+\.[0-9]*
+// vim: set filetype=c++:5
+var x : bool = 0;
+
+set x = y + 1; # Undeclared type on access
 print x;

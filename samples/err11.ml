@@ -11,6 +11,5 @@ var resultado : int = 1;
 // }
 
 print " Calculando Fatorial de 5 🧠: " ;
-# TODO -> Melhorar mensagem de erro usando "função não declarada" ao invés de "variável não declarada"
 set resultado = calcular ( 5, 2 ) ;  # OK -> Função não declarada
 print resultado ;
