@@ -2,6 +2,8 @@
 
 Assignment instructions at [./projeto_final.pdf](./projeto_final.pdf).
 
+Gramática: [Projeto - Mini Lang](./Projeto%20-%20Mini%20Lang.pdf)
+
 ## Install
 
 ### Linux
