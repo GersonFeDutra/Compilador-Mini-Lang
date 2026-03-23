@@ -209,6 +209,7 @@
                 "./samples/suc15.ml",
                 "./samples/suc16.ml",
                 "./samples/suc17.ml",
+                "./samples/suc18.ml",
             ]
         }
     ]

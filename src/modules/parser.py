@@ -130,11 +130,15 @@ class Parser:
 
         # Salvar tabelas de símbolos
         assert var_token.coords is not None
-        
-        sym = Symbol(name, var_type, var_token.coords, scope_id=self._sym_table.scope_id)
-        
+
+        sym = Symbol(
+            name, var_type, var_token.coords, scope_id=self._sym_table.scope_id
+        )
+
         if not self._sym_table.insert(name, sym):
-            dupl: Symbol = self._sym_table.find(name)  # pyright: ignore[reportAssignmentType]
+            dupl: Symbol = self._sym_table.find(
+                name
+            )  # pyright: ignore[reportAssignmentType]
             raise SyntaxError(
                 f"[b][Erro Sintático] [{self._lexer.filename}:{var_token.coords}]:[/b] "
                 f"variável '[cyan]{name}[/cyan]' já declarada em [{dupl.coords}]."
@@ -188,7 +192,9 @@ class Parser:
             )
 
         return Assignment(
-            name=sym.mangled_name if sym else name, value=expr_node, var_type=sym.type if sym else "undefined"
+            name=sym.mangled_name if sym else name,
+            value=expr_node,
+            var_type=sym.type if sym else "undefined",
         )
 
     def print_stmt(self) -> PrintStmt:
@@ -269,9 +275,10 @@ class Parser:
                 self.match(Tag(":"))
                 p_type = str(self._lookahead)  # ação semântica
                 self.match(Tags.TYPE)
-                
-                p_sym = Symbol(p_name, p_type, p_token_coords, scope_id=self._sym_table.scope_id
-                               )
+
+                p_sym = Symbol(
+                    p_name, p_type, p_token_coords, scope_id=self._sym_table.scope_id
+                )
                 # ação semântica: `params.append(<f-p>.node)`
                 params.append(FormalParam(name=p_sym.mangled_name, param_type=p_type))
 
@@ -310,7 +317,7 @@ class Parser:
         ]
         def_sym = Symbol(name, "function", self._lexer.coords, param_symbols)
 
-        def_sym.return_type = ret_type
+        # def_sym.return_type = ret_type
         # 5. Insere a função na tabela em seu próprio escopo (permite recursão)
         self._sym_table.insert(name, def_sym)
 
@@ -558,24 +565,19 @@ class Parser:
             id_token_coords = self._lookahead.coords
             name = str(self._lookahead)
             self.match(Tags.ID)
-            #undeclared: bool = False
+            undeclared: bool = False
 
             sym = self._sym_table.find(name)
             if sym is None:
-                #undeclared = True
-                raise SemanticError(
-                    f"[Erro Semântico] [{self._lexer.filename}:{id_token_coords}]: "
-                    f"A variável '{name}' não foi encontrada."
-                )
-            assert sym is not None
+                undeclared = True
             if self._lookahead == "(":
                 # <factor> -> <function-call>
                 # <function-call> = <identifier> "(" [ <actual-params>] ") "
                 self.match(Tag("("))
                 if undeclared:
                     raise SyntaxError(
-                        f"[Erro Sintático] [{self._lexer.filename}:{id_token_coords}]: "
-                        f"A função '{name}' não foi declarada."
+                        f"[b][Erro Sintático] [{self._lexer.filename}:{id_token_coords}][/b]: "
+                        f"A função '[cyan]{name}[/cyan]' não foi declarada."
                     )
                 assert sym is not None
 
@@ -594,7 +596,7 @@ class Parser:
                 if sym.type == "function":  # and sym.params_count != -1:
                     if len(args) != len(sym.params):
                         raise SyntaxError(
-                            f"[Erro Sintático] [{self._lexer.filename}:{closing_token_coords}]: "
+                            f"[b][Erro Sintático] [{self._lexer.filename}:{closing_token_coords}][/b]: "
                             f"A função '[cyan]{name}[/cyan]' exige {len(sym.params)} "
                             f"argumento{'s' if len(sym.params) > 1 else ''} "
                             # WARNING -> Verificar se `to_code` é seguro de ser usado aqui!
@@ -633,14 +635,13 @@ class Parser:
                                     f"[purple]{expected_type}[/purple], mas recebeu [purple]{arg_type}[/purple]."
                                 )
                 return FunctionCall(name=name, args=args)
-            """elif undeclared:
+            elif undeclared:
                 raise SyntaxError(
                     f"[b][Erro Sintático] [{self._lexer.filename}:{id_token_coords}]:[/b] "
                     f"Identificador referencia uma variável '[cyan]{name}[/cyan]' não declarada."
-                )"""
+                )
 
             return Identifier(name=sym.mangled_name)
-
         else:
             raise SyntaxError(
                 f"[b][Erro Sintático] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
@@ -649,11 +650,6 @@ class Parser:
                 f"ou [{RTC_ORANGE}]chamada de função[/{RTC_ORANGE}], "
                 f"mas recebeu '[purple]{self._lookahead}[/purple]' ao invés disso."
             )
-
-        # def digit(self) -> Literal:
-        """
-        Regra: digit -> digit { print(digit) }
-        """
 
     def _infer_type(self, node: ASTNode) -> str:
         """Descobre o tipo de uma expressão e bloqueia misturas incompatíveis."""
@@ -676,9 +672,9 @@ class Parser:
             expr_type = self._infer_type(node.expr)
             if node.op == "not" and expr_type not in ("bool", "int", "unknown"):
                 raise SemanticError(
-                    f"[Erro Semântico]: Operador [cyan]not[/cyan] requer "
-                    "'[cyan]bool[/cyan]' ou [cyan]int[/cyan], recebeu "
-                    f"'[cyan]{expr_type}[/cyan]'. "
+                    f"[b][Erro Semântico] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
+                    "Operador [cyan]not[/cyan] requer '[cyan]bool[/cyan]' ou [cyan]int[/cyan], "
+                    f"recebeu '[cyan]{expr_type}[/cyan]'. "
                 )
             if node.op in ("+", "-") and expr_type not in (
                 "int",
@@ -687,7 +683,8 @@ class Parser:
                 "unknown",
             ):
                 raise SemanticError(
-                    f"[Erro Semântico]: Operador '[cyan]{node.op}[/cyan]' numérico "
+                    f"[b][Erro Semântico] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
+                    f"Operador '[cyan]{node.op}[/cyan]' numérico "
                     f"não suporta o tipo '[purple]{expr_type}[/purple]'."
                 )
             return "bool" if node.op == "not" else expr_type
@@ -704,22 +701,25 @@ class Parser:
                         "int",
                     ):
                         raise SemanticError(
-                            f"[Erro Semântico]: Operador lógico '{node.op}' exige tipos 'bool' ou 'int'."
-                            f"Recebeu '{left_type}' e  '{right_type}'."
+                            f"[b][Erro Semântico] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
+                            f"Operador lógico '{node.op}' exige tipos 'bool' ou 'int', "
+                            f"mas recebeu '{left_type}' e '{right_type}'."
                         )
                     return "bool"
                 # (+, -, *, /)
                 if node.op in ("+", "-", "*", "/"):
                     if left_type == "str" or right_type == "str":
                         raise SemanticError(
-                            f"[Erro Semântico]: Não é possível usar o operador '{node.op}' com strings."
+                            f"[b][Erro Semântico] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
+                            f"Não é possível usar o operador '{node.op}' com strings."
                         )
 
                     if (left_type == "bool" and right_type == "real") or (
                         left_type == "real" and right_type == "bool"
                     ):
                         raise SemanticError(
-                            f"[Erro Semântico]: Tipos incompatíveis (Tentativa de operar 'bool' com 'real')."
+                            f"[b][Erro Semântico] [{self._lexer.filename}:{self._lookahead.coords}][/b]: "
+                            "Tipos incompatíveis (Tentativa de operar [purple]bool[/purple] com [purple]real[/purple])."
                         )
 
                     if left_type == "real" or right_type == "real":

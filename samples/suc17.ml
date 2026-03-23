@@ -8,6 +8,6 @@ def soma (a:int, b : real) : int {
 }
 
 // -3 + +5.0
-# FIXME -> Deve truncar real -> int
+# OK -> Deve truncar real -> int
 var z: real = (soma(-x, +y) < 4) + 1; // OK -> combinando tipos compatíveis
 print z;

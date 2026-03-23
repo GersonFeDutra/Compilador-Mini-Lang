@@ -12,6 +12,5 @@ def calcular ( x : int) : int{ # OK -> Deve permitir sombreamento
 }
 
 print "Calculando Fatorial de 5 🧠: " ;
-# FIXME -> Tipo incompatível. A variável 'resultado' é  de tipo 'int', mas recebeu um valor 'function'.
 set resultado = calcular ( 5) ;
 print resultado ;
